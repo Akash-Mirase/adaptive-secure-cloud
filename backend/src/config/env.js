@@ -1,4 +1,6 @@
 import dotenv from 'dotenv';
+import mysql from 'mysql2/promise';
+
 
 dotenv.config();
 
@@ -50,4 +52,62 @@ export function assertProductionConfig() {
   if (problems.length > 0) {
     throw new Error(`Invalid production configuration:\n- ${problems.join('\n- ')}`);
   }
+}
+
+// Connection pool: reuses connections instead of opening one per request.
+// SECURITY: multipleStatements stays false (the default), so an injected
+// "; DROP TABLE ..." cannot run as a second statement.
+export const pool = mysql.createPool({
+  host: env.db.host,
+  port: env.db.port,
+  user: env.db.user,
+  password: env.db.password,
+  database: env.db.name,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  charset: 'utf8mb4',
+  timezone: 'Z', // store and read UTC
+  supportBigNumbers: true, // BIGINT (file sizes) returned as Number when safe
+  bigNumberStrings: false,
+  multipleStatements: false,
+});
+
+// mysql2 throws on `undefined` parameters; convert to SQL NULL.
+const normalize = (params) => params.map((p) => (p === undefined ? null : p));
+
+// Every query goes through here.
+// SECURITY: pool.execute() sends the SQL and the values SEPARATELY (prepared
+// statement), so user input can never change the structure of the query.
+// This is what prevents SQL injection. NEVER build SQL by string concatenation.
+// `executor` is the pool by default, or a transaction connection.
+export async function query(sql, params = [], executor = pool) {
+  const [rows] = await executor.execute(sql, normalize(params));
+  return rows;
+}
+
+// Runs `work(conn)` atomically: all statements succeed, or none are applied.
+// Needed later so "create file + wrapped key + permission" is all-or-nothing.
+export async function withTransaction(work) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await work(conn);
+    await conn.commit();
+    return result;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function pingDatabase() {
+  await query('SELECT 1 AS ok');
+  return true;
+}
+
+export async function closePool() {
+  await pool.end();
 }

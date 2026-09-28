@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
-import { getHealth, validationDemo } from '../controllers/health.controller.js';
 import { validate } from '../middleware/validate.js';
+import { getHealth, getDbHealth, validationDemo } from '../controllers/health.controller.js';
+import asyncHandler from './utils/asyncHandler.js';
 
 const router = Router();
 
 router.get('/', getHealth);
+
+router.get('/db', asyncHandler(getDbHealth));
 
 // TEMPORARY: exists only to prove the validation pipeline works.
 // It is deleted in Phase 5 when real register/login routes replace it.
