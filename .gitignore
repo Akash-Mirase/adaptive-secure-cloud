@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Secrets: NEVER commit these (leaked AWS/JWT keys are a real-world breach vector)
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+coverage/
+
+# Logs / OS / editor
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local test artifacts
+tmp/
+*.local
