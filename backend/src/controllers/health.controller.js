@@ -12,3 +12,9 @@ export function getHealth(req, res) {
     'Backend is healthy'
   );
 }
+
+// TEMPORARY (removed in Phase 5): echoes back the sanitized input.
+export function validationDemo(req, res) {
+  const { name, email } = req.body;
+  return sendSuccess(res, { name, email }, 'Input is valid');
+}
