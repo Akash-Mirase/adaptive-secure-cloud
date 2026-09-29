@@ -28,8 +28,9 @@ export default function Files() {
 
   const handleDownload = async (file) => {
     setBusyId(file.id);
+    setError('');
     try {
-      await fileService.downloadFile(file.id, file.originalName);
+      await fileService.downloadFile(file.id, file.originalName, file.mimeType);
     } catch (err) {
       setError(parseApiError(err).message);
     } finally {
@@ -58,9 +59,10 @@ export default function Files() {
 
       {error && <div className="alert alert-danger">{error}</div>}
 
-      <div className="alert alert-warning small">
-        Phase 6: files are stored as-is for now (no client-side encryption yet). That arrives in Phase 7.
-        Risk scoring shown below is a fixed placeholder until Phase 10.
+      <div className="alert alert-info small">
+        Encryption keys currently live only in this browser tab's memory (Phase 7 scaffolding).
+        Reloading the page means Download will show a key-not-available message until Phase 8
+        adds persistent, password-protected key storage.
       </div>
 
       <div className="card shadow-sm">
@@ -70,9 +72,7 @@ export default function Files() {
               <tr><th>Name</th><th>Size</th><th>Type</th><th>Risk</th><th>Status</th><th>Created</th><th>Actions</th></tr>
             </thead>
             <tbody>
-              {loading && (
-                <tr><td colSpan={7} className="text-center py-4 text-muted">Loading...</td></tr>
-              )}
+              {loading && <tr><td colSpan={7} className="text-center py-4 text-muted">Loading...</td></tr>}
               {!loading && files.length === 0 && (
                 <tr><td colSpan={7} className="text-center py-4 text-muted">No files yet. Upload one to get started.</td></tr>
               )}
@@ -84,16 +84,14 @@ export default function Files() {
                   <td><RiskBadge level={f.riskLevel} /> <small className="text-muted">({f.riskScore})</small></td>
                   <td>
                     <span className={`badge text-bg-${f.encryptionPending ? 'secondary' : 'success'}`}>
-                      {f.encryptionPending ? 'Not yet encrypted' : 'Encrypted'}
+                      {f.encryptionPending ? 'Not encrypted' : `Encrypted (${f.encryptionAlgorithm})`}
                     </span>
                   </td>
                   <td className="small">{formatDate(f.createdAt)}</td>
                   <td className="text-nowrap">
-                    <button className="btn btn-sm btn-outline-primary me-1" disabled={busyId === f.id}
-                      onClick={() => handleDownload(f)}>Download</button>
+                    <button className="btn btn-sm btn-outline-primary me-1" disabled={busyId === f.id} onClick={() => handleDownload(f)}>Download</button>
                     <button className="btn btn-sm btn-outline-secondary me-1" disabled>Share</button>
-                    <button className="btn btn-sm btn-outline-danger" disabled={busyId === f.id}
-                      onClick={() => handleDelete(f)}>Delete</button>
+                    <button className="btn btn-sm btn-outline-danger" disabled={busyId === f.id} onClick={() => handleDelete(f)}>Delete</button>
                   </td>
                 </tr>
               ))}
