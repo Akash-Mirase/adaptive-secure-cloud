@@ -11,9 +11,13 @@ const nodeEnv = process.env.NODE_ENV || 'development';
 export const env = {
   nodeEnv,
   port: Number(process.env.PORT) || 4000,
+  maxUploadMb: Number(process.env.MAX_UPLOAD_MB) || 100,
   corsOrigins: (process.env.CORS_ORIGIN || 'http://localhost:5173')
     .split(',')
     .map((origin) => origin.trim()),
+
+    bcryptRounds: nodeEnv === 'test' ? 4 : 12,
+
 
   jwt: {
     secret: process.env.JWT_SECRET,
@@ -36,17 +40,17 @@ export const env = {
   },
 };
 
+
 // Fail fast: refuse to boot in production with weak or missing secrets.
 // A short JWT secret can be brute-forced offline, letting an attacker forge tokens.
 // Called from server.js (not app.js) so tests can import the app freely.
 export function assertProductionConfig() {
-  if (env.nodeEnv !== 'production') return;
 
   const problems = [];
   if (!env.jwt.secret || env.jwt.secret.length < 32) {
     problems.push('JWT_SECRET must be set and at least 32 characters');
   }
-  if (!env.db.user || !env.db.password) {
+  if (env.nodeEnv === 'production' && (!env.db.user || !env.db.password)) {
     problems.push('DB_USER and DB_PASSWORD must be set');
   }
   if (problems.length > 0) {

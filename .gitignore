@@ -1,6 +1,8 @@
 # Dependencies
 node_modules/
 
+backend/storage/
+
 # Secrets: NEVER commit these (leaked AWS/JWT keys are a real-world breach vector)
 .env
 .env.*

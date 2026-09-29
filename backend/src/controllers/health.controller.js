@@ -1,6 +1,5 @@
 import { sendSuccess, sendError } from '../utils/apiResponse.js';
-import { pingDatabase } from '../config/db.js';
-
+import { pingDatabase } from '../config/env.js';
 
 export function getHealth(req, res) {
   return sendSuccess(
@@ -13,12 +12,6 @@ export function getHealth(req, res) {
     },
     'Backend is healthy'
   );
-}
-
-// TEMPORARY (removed in Phase 5): echoes back the sanitized input.
-export function validationDemo(req, res) {
-  const { name, email } = req.body;
-  return sendSuccess(res, { name, email }, 'Input is valid');
 }
 
 export async function getDbHealth(req, res) {

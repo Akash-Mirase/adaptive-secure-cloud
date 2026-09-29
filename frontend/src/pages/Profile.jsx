@@ -1,6 +1,9 @@
 import PageHeader from '../components/PageHeader.jsx';
+import { useAuth } from '../hooks/useAuth.js';
+import { formatDate } from '../utils/format.js';
 
 export default function Profile() {
+  const { user } = useAuth();
   return (
     <>
       <PageHeader title="Profile" subtitle="Account and encryption key settings" />
@@ -9,8 +12,10 @@ export default function Profile() {
           <div className="card shadow-sm">
             <div className="card-header fw-semibold">Account</div>
             <div className="card-body">
-              <div className="mb-3"><label className="form-label">Name</label><input className="form-control" disabled placeholder="Loaded in Phase 5" /></div>
-              <div className="mb-0"><label className="form-label">Email</label><input className="form-control" disabled placeholder="Loaded in Phase 5" /></div>
+              <div className="mb-3"><label className="form-label">Name</label><input className="form-control" value={user.name} disabled readOnly /></div>
+              <div className="mb-3"><label className="form-label">Email</label><input className="form-control" value={user.email} disabled readOnly /></div>
+              <div className="mb-3"><label className="form-label">Role</label><input className="form-control" value={user.role} disabled readOnly /></div>
+              <div className="text-muted small">Member since {formatDate(user.createdAt)}</div>
             </div>
           </div>
         </div>

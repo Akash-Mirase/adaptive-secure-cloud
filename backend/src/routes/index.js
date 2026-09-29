@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import healthRoutes from './health.routes.js';
+import authRoutes from './auth.routes.js';
+import filesRoutes from './files.routes.js';
 
 // Every feature router is mounted here so app.js never changes again.
 const router = Router();
 
 router.use('/health', healthRoutes);
-// Later: /auth (Phase 5), /files (Phase 6), /shares (Phase 12), /audit (Phase 13)
+router.use('/auth', authRoutes);
+router.use('/files', filesRoutes);
+// Later: /files (Phase 6), /shares (Phase 12), /audit (Phase 13)
 
 export default router;

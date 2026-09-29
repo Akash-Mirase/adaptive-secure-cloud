@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 
 import AuthLayout from './layouts/AuthLayout.jsx';
 import AppLayout from './layouts/AppLayout.jsx';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
 
 import Home from './pages/Home.jsx';
 import Login from './pages/Login.jsx';
@@ -27,15 +28,17 @@ export default function App() {
         <Route path="/register" element={<Register />} />
       </Route>
 
-      {/* App pages. Phase 5 wraps these in a ProtectedRoute that requires login. */}
-      <Route element={<AppLayout />}>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/files" element={<Files />} />
-        <Route path="/upload" element={<Upload />} />
-        <Route path="/shared" element={<Shared />} />
-        <Route path="/security" element={<Security />} />
-        <Route path="/audit" element={<Audit />} />
-        <Route path="/profile" element={<Profile />} />
+      {/* Pages that require a logged-in user */}
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppLayout />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/files" element={<Files />} />
+          <Route path="/upload" element={<Upload />} />
+          <Route path="/shared" element={<Shared />} />
+          <Route path="/security" element={<Security />} />
+          <Route path="/audit" element={<Audit />} />
+          <Route path="/profile" element={<Profile />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<NotFound />} />

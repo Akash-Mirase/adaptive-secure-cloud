@@ -38,3 +38,25 @@ export async function findAuthRecordByEmail(email, executor) {
   if (!rows[0]) return null;
   return { ...toUser(rows[0]), passwordHash: rows[0].password_hash };
 }
+
+// Atomically counts a failed login and locks the account when the limit is reached.
+// MySQL evaluates SET assignments left to right, so locked_until is decided using the
+// OLD counter (+1) BEFORE the counter itself is incremented. Do not reorder these lines.
+export async function recordFailedLogin(id, maxAttempts, lockedUntilDate, executor) {
+  await query(
+    `UPDATE users
+        SET locked_until = IF(failed_login_count + 1 >= ?, ?, locked_until),
+            failed_login_count = failed_login_count + 1
+      WHERE id = ?`,
+    [maxAttempts, lockedUntilDate, id],
+    executor
+  );
+}
+
+export async function resetFailedLogins(id, executor) {
+  await query(
+    'UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = ?',
+    [id],
+    executor
+  );
+}
