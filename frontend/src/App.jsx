@@ -15,6 +15,7 @@ import Security from './pages/Security.jsx';
 import Audit from './pages/Audit.jsx';
 import Profile from './pages/Profile.jsx';
 import NotFound from './pages/NotFound.jsx';
+import RecoverAccount from './pages/RecoverAccount.jsx';
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/security" element={<Security />} />
           <Route path="/audit" element={<Audit />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/recover" element={<RecoverAccount />} />
         </Route>
       </Route>
 

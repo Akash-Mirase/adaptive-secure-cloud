@@ -42,6 +42,7 @@ router.post('/', uploadSingleFile, uploadRules, validate, asyncHandler(filesCont
 router.get('/', asyncHandler(filesController.listFiles));
 router.get('/:id', fileIdParamRules, validate, loadFile, asyncHandler(filesController.getFile));
 router.get('/:id/download', fileIdParamRules, validate, loadFile, asyncHandler(filesController.downloadFile));
+router.get('/:id/key', fileIdParamRules, validate, loadFile, asyncHandler(filesController.getFileKey));
 router.delete('/:id', fileIdParamRules, validate, loadFile, asyncHandler(filesController.deleteFile));
 
 export default router;

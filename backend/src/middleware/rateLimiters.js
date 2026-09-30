@@ -17,3 +17,5 @@ export function createAuthLimiter({ limit = env.nodeEnv === 'test' ? 1000 : 10, 
 export const loginLimiter = createAuthLimiter({ skipSuccessfulRequests: true });
 // Register: every attempt counts, which slows down mass account creation.
 export const registerLimiter = createAuthLimiter();
+// Recovery is powerful (it resets the password), so it gets the tightest limit.
+export const recoveryLimiter = createAuthLimiter({ limit: env.nodeEnv === 'test' ? 1000 : 5, skipSuccessfulRequests: false });

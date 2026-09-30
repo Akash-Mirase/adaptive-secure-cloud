@@ -35,6 +35,7 @@ CREATE TABLE user_keys (
   master_key_iv               VARCHAR(32)  NOT NULL,
   recovery_wrapped_master_key VARCHAR(255) NULL,
   recovery_iv                 VARCHAR(32)  NULL,
+  recovery_key_hash           VARCHAR(60)  NULL,
   key_version                 INT UNSIGNED NOT NULL DEFAULT 1,
   created_at                  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at                  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

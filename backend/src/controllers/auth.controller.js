@@ -6,8 +6,39 @@ import { sendSuccess } from '../utils/apiResponse.js';
 
 export async function register(req, res) {
   const { name, email, password } = req.body;
-  const user = await authService.registerUser({ name, email, password }, { ipAddress: req.ip });
+  const keyBundle = {
+    kdfIterations: req.body.kdfIterations,
+    kdfSalt: req.body.kdfSalt,
+    wrappedMasterKey: req.body.wrappedMasterKey,
+    masterKeyIv: req.body.masterKeyIv,
+    recoveryWrappedMasterKey: req.body.recoveryWrappedMasterKey,
+    recoveryIv: req.body.recoveryIv,
+    recoveryKey: req.body.recoveryKey, // used once, for hashing, never stored raw
+  };
+  const user = await authService.registerUser({ name, email, password, keyBundle }, { ipAddress: req.ip });
   return sendSuccess(res, { user }, 'Registration successful', 201);
+}
+
+export async function getKeys(req, res) {
+  const keys = await authService.getKeyBundleForUser(req.user.id);
+  return sendSuccess(res, { keys });
+}
+
+export async function getRecoveryBundle(req, res) {
+  const bundle = await authService.getRecoveryBundle(req.query.email);
+  return sendSuccess(res, bundle);
+}
+
+export async function recover(req, res) {
+  const { email, recoveryKey, newPassword } = req.body;
+  const keyBundle = {
+    kdfIterations: req.body.kdfIterations,
+    kdfSalt: req.body.kdfSalt,
+    wrappedMasterKey: req.body.wrappedMasterKey,
+    masterKeyIv: req.body.masterKeyIv,
+  };
+  await authService.recoverAccount({ email, recoveryKey, newPassword, keyBundle }, { ipAddress: req.ip });
+  return sendSuccess(res, null, 'Account recovered. You can now sign in with your new password.');
 }
 
 export async function login(req, res) {

@@ -60,3 +60,6 @@ export async function resetFailedLogins(id, executor) {
     executor
   );
 }
+export async function updatePasswordHash(id, passwordHash, executor) {
+  await query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, id], executor);
+}

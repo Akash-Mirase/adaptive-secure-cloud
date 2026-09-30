@@ -56,6 +56,7 @@ export default function Login() {
         </form>
         <div className="text-center mt-3 small">
           No account? <Link to="/register">Register</Link>
+          <div className="text-center mt-2 small"><Link to="/recover">Forgot your password?</Link></div>
         </div>
       </div>
     </div>

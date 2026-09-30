@@ -66,3 +66,24 @@ export async function importKey(base64Key) {
 
 export const ivToBase64 = (iv) => bufferToBase64(iv);
 export const ivFromBase64 = (base64) => new Uint8Array(base64ToBuffer(base64));
+
+// Wraps/unwraps a FEK under the Master Key. Wrapping (not just exporting +
+// AES-encrypting the bytes by hand) keeps key material inside the WebCrypto
+// boundary end-to-end whenever possible.
+export async function wrapFek(fek, masterKey, iv) {
+  return window.crypto.subtle.wrapKey('raw', fek, masterKey, { name: ALGORITHM, iv, tagLength: TAG_LENGTH_BITS });
+}
+
+export async function unwrapFek(wrappedBuffer, masterKey, iv) {
+  try {
+    return await window.crypto.subtle.unwrapKey(
+      'raw', wrappedBuffer, masterKey,
+      { name: ALGORITHM, iv, tagLength: TAG_LENGTH_BITS },
+      { name: ALGORITHM, length: KEY_LENGTH_BITS },
+      true,
+      ['encrypt', 'decrypt']
+    );
+  } catch {
+    throw new Error('Could not unlock this file\'s key. Your Master Key or the stored data may be invalid.');
+  }
+}

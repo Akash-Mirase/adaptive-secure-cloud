@@ -4,6 +4,8 @@ import { sendSuccess } from '../utils/apiResponse.js';
 import * as fileModel from '../models/file.model.js';
 import * as storage from '../services/storage.service.js';
 import { logEvent } from '../services/audit.service.js';
+import * as fileKeyModel from '../models/fileKey.model.js';
+import { withTransaction } from '../config/env.js';
 
 const GCM_TAG_BYTES = 16;
 
@@ -49,12 +51,22 @@ export async function uploadFile(req, res) {
     ciphertextSha256,
   };
 
-  await fileModel.createFile(record);
+    const wrappedFek = req.body.wrappedFek;
+  const wrapIv = req.body.wrapIv;
+
+  await withTransaction(async (conn) => {
+    await fileModel.createFile(record, conn);
+    // The owner's own wrapped-FEK copy. Phase 12 adds one more row per
+    // recipient when a file is shared — never a second copy of the plaintext key.
+    await fileKeyModel.createFileKey(
+      { fileId: id, userId: ownerId, wrappedFek, wrapIv, wrapType: 'MASTER_KEY' }, conn
+    );
+  });
   try {
     await storage.putObject(record.s3Key, buffer);
     await fileModel.markActive(id);
   } catch (err) {
-    await fileModel.deleteById(id);
+    await fileModel.deleteById(id); // cascades file_keys via FK
     throw err;
   }
 
@@ -66,6 +78,7 @@ export async function uploadFile(req, res) {
     ipAddress: req.ip,
     details: { originalName: record.originalName, size: record.fileSize, algorithm: keyMetadata.algorithm },
   });
+  
 
   return sendSuccess(res, { file: toFileView(await fileModel.findById(id)) }, 'File uploaded', 201);
 }
@@ -98,6 +111,15 @@ export async function deleteFile(req, res) {
   await fileModel.deleteById(file.id);
   await logEvent({ userId: req.user.id, eventType: 'DELETE', fileId: file.id, result: 'SUCCESS', ipAddress: req.ip });
   return sendSuccess(res, null, 'File deleted');
+}
+
+// Returns the CALLER's wrapped FEK for this file. Still ciphertext — the
+// server does not unwrap it. Ownership/permission was already checked by
+// the loadFile middleware (Phase 12 extends that check to shared recipients).
+export async function getFileKey(req, res) {
+  const key = await fileKeyModel.findForUser(req.targetFile.id, req.user.id);
+  if (!key) throw new AppError('No key available for this file', 404);
+  return sendSuccess(res, { wrappedFek: key.wrappedFek, wrapIv: key.wrapIv, wrapType: key.wrapType });
 }
 
 // The only shape of a file record that leaves the server.
