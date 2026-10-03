@@ -92,17 +92,23 @@ export async function getFile(req, res) {
   return sendSuccess(res, { file: toFileView(req.targetFile) });
 }
 
-// The backend NEVER decrypts. It serves ciphertext bytes exactly as stored;
-// decryption happens only in the requesting browser.
+
 export async function downloadFile(req, res) {
   const file = req.targetFile;
-  const buffer = await storage.getObject(file.s3Key);
+  const { stream, contentLength } = await storage.getObject(file.s3Key);
 
   await logEvent({ userId: req.user.id, eventType: 'DOWNLOAD', fileId: file.id, result: 'SUCCESS', ipAddress: req.ip });
 
   res.setHeader('Content-Type', 'application/octet-stream'); // honest: this is ciphertext, not the real file type
   res.setHeader('Content-Disposition', `attachment; filename="${file.id}.enc"`);
-  return res.send(buffer);
+  if (contentLength) res.setHeader('Content-Length', contentLength);
+
+  stream.on('error', (err) => {
+    console.error('[s3] stream error during download:', err.message);
+    if (!res.headersSent) res.status(502).end();
+    else res.destroy(err);
+  });
+  stream.pipe(res);
 }
 
 export async function deleteFile(req, res) {

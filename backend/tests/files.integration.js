@@ -1,9 +1,12 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID, webcrypto } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import request from 'supertest';
+import crypto from 'node:crypto';
+
+const { webcrypto } = crypto;
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'files-test-secret-files-test-secret-000000';
@@ -22,40 +25,347 @@ after(async () => {
 
 async function registerAndLogin() {
   const email = newEmail();
-  await request(app).post('/api/auth/register').send({ name: 'File Tester', email, password: PASSWORD }).expect(201);
-  const res = await request(app).post('/api/auth/login').send({ email, password: PASSWORD }).expect(200);
-  return { token: res.body.data.token, user: res.body.data.user };
+
+  const encoder = new TextEncoder();
+
+  // Same values/algorithms as frontend/src/crypto/kdf.js
+  const kdfIterations = 250000;
+  const salt = webcrypto.getRandomValues(new Uint8Array(16));
+
+  // Derive the password KEK using PBKDF2-SHA256.
+  const passwordKey = await subtle.importKey(
+    'raw',
+    encoder.encode(PASSWORD),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+
+  const kek = await subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations: kdfIterations,
+      hash: 'SHA-256',
+    },
+    passwordKey,
+    {
+      name: 'AES-GCM',
+      length: 256,
+    },
+    false,
+    ['wrapKey', 'unwrapKey']
+  );
+
+  // Same as frontend generateMasterKey()
+  const masterKey = await subtle.generateKey(
+    {
+      name: 'AES-GCM',
+      length: 256,
+    },
+    true,
+    ['wrapKey', 'unwrapKey']
+  );
+
+  // Same as frontend generateWrapIV()
+  const masterKeyIv = webcrypto.getRandomValues(
+    new Uint8Array(12)
+  );
+
+  // Same as frontend wrapMasterKey()
+  const wrappedMasterKeyBuffer = await subtle.wrapKey(
+    'raw',
+    masterKey,
+    kek,
+    {
+      name: 'AES-GCM',
+      iv: masterKeyIv,
+      tagLength: 128,
+    }
+  );
+
+  // Same as frontend generateRecoveryKey()
+  const recoveryBytes = webcrypto.getRandomValues(
+    new Uint8Array(20)
+  );
+
+  const recoveryKeyBase64Url = Buffer.from(recoveryBytes)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  const recoveryKey = recoveryKeyBase64Url
+    .match(/.{1,4}/g)
+    .join('-')
+    .toUpperCase();
+
+  // Same as frontend importRecoveryWrapKey():
+  // SHA-256(recovery-key raw bytes) -> AES-256-GCM key
+  const recoveryHash = await subtle.digest(
+    'SHA-256',
+    recoveryBytes
+  );
+
+  const recoveryWrapKey = await subtle.importKey(
+    'raw',
+    recoveryHash,
+    {
+      name: 'AES-GCM',
+    },
+    false,
+    ['wrapKey', 'unwrapKey']
+  );
+
+  const recoveryIv = webcrypto.getRandomValues(
+    new Uint8Array(12)
+  );
+
+  const recoveryWrappedMasterKeyBuffer = await subtle.wrapKey(
+    'raw',
+    masterKey,
+    recoveryWrapKey,
+    {
+      name: 'AES-GCM',
+      iv: recoveryIv,
+      tagLength: 128,
+    }
+  );
+
+  const toBase64 = (value) =>
+    Buffer.from(value).toString('base64');
+
+  const registrationPayload = {
+    name: 'File Tester',
+    email,
+    password: PASSWORD,
+
+    kdfSalt: toBase64(salt),
+    kdfIterations,
+
+    wrappedMasterKey: toBase64(wrappedMasterKeyBuffer),
+    masterKeyIv: toBase64(masterKeyIv),
+
+    recoveryWrappedMasterKey: toBase64(
+      recoveryWrappedMasterKeyBuffer
+    ),
+    recoveryIv: toBase64(recoveryIv),
+
+    recoveryKey,
+  };
+
+  const registerResponse = await request(app)
+    .post('/api/auth/register')
+    .send(registrationPayload)
+    .expect(201);
+
+  if (!registerResponse.body?.success) {
+    throw new Error(
+      `Registration failed: ${JSON.stringify(registerResponse.body)}`
+    );
+  }
+
+  const res = await request(app)
+    .post('/api/auth/login')
+    .send({
+      email,
+      password: PASSWORD,
+    })
+    .expect(200);
+
+  return {
+    token: res.body.data.token,
+    user: res.body.data.user,
+  };
 }
 const bearer = (t) => ({ Authorization: `Bearer ${t}` });
 
 // Stands in for the browser's crypto module.
 async function encryptForTest(plainBuffer) {
-  const key = await subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+  // Generate the FEK exactly like frontend generateFileKey()
+  const fek = await subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+
+  // Generate file IV exactly like frontend generateIV()
   const iv = webcrypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = Buffer.from(await subtle.encrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, plainBuffer));
-  const rawKey = Buffer.from(await subtle.exportKey('raw', key));
-  return { ciphertext, iv, ivBase64: Buffer.from(iv).toString('base64'), keyBase64: rawKey.toString('base64') };
+
+  // Encrypt plaintext with FEK
+  const ciphertext = Buffer.from(
+    await subtle.encrypt(
+      {
+        name: 'AES-GCM',
+        iv,
+        tagLength: 128,
+      },
+      fek,
+      plainBuffer
+    )
+  );
+
+  // Generate the user's Master Key.
+  // This stands in for the Master Key created during registration.
+  const masterKey = await subtle.generateKey(
+    {
+      name: 'AES-GCM',
+      length: 256,
+    },
+    true,
+    ['wrapKey', 'unwrapKey']
+  );
+
+  // Generate FEK wrapping IV exactly like frontend generateWrapIV()
+  const wrapIv = webcrypto.getRandomValues(
+    new Uint8Array(12)
+  );
+
+  // Wrap FEK under Master Key exactly like frontend wrapFek()
+  const wrappedFekBuffer = await subtle.wrapKey(
+    'raw',
+    fek,
+    masterKey,
+    {
+      name: 'AES-GCM',
+      iv: wrapIv,
+      tagLength: 128,
+    }
+  );
+
+  // Export FEK for test-side verification.
+  const rawFek = Buffer.from(
+    await subtle.exportKey('raw', fek)
+  );
+
+  // Export Master Key so tests can reproduce the client-side
+  // unwrap/decrypt operation.
+  const rawMasterKey = Buffer.from(
+    await subtle.exportKey('raw', masterKey)
+  );
+
+  return {
+    ciphertext,
+
+    ivBase64: Buffer.from(iv).toString('base64'),
+
+    wrappedFekBase64: Buffer.from(
+      wrappedFekBuffer
+    ).toString('base64'),
+
+    wrapIvBase64: Buffer.from(
+      wrapIv
+    ).toString('base64'),
+
+    fekBase64: rawFek.toString('base64'),
+
+    masterKeyBase64: rawMasterKey.toString('base64'),
+  };
 }
 
-async function decryptForTest(ciphertextBuffer, ivBase64, keyBase64) {
-  const key = await subtle.importKey('raw', Buffer.from(keyBase64, 'base64'), { name: 'AES-GCM' }, true, ['decrypt']);
-  const iv = Buffer.from(ivBase64, 'base64');
-  const plain = await subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, ciphertextBuffer);
+async function decryptForTest(
+  ciphertextBuffer,
+  ivBase64,
+  wrappedFekBase64,
+  wrapIvBase64,
+  masterKeyBase64
+) {
+  const masterKey = await subtle.importKey(
+    'raw',
+    Buffer.from(masterKeyBase64, 'base64'),
+    {
+      name: 'AES-GCM',
+    },
+    true,
+    ['wrapKey', 'unwrapKey']
+  );
+
+  const wrappedFek = Buffer.from(
+    wrappedFekBase64,
+    'base64'
+  );
+
+  const wrapIv = Buffer.from(
+    wrapIvBase64,
+    'base64'
+  );
+
+  // Unwrap FEK using Master Key.
+  const fek = await subtle.unwrapKey(
+    'raw',
+    wrappedFek,
+    masterKey,
+    {
+      name: 'AES-GCM',
+      iv: wrapIv,
+      tagLength: 128,
+    },
+    {
+      name: 'AES-GCM',
+      length: 256,
+    },
+    true,
+    ['encrypt', 'decrypt']
+  );
+
+  const iv = Buffer.from(
+    ivBase64,
+    'base64'
+  );
+
+  const plain = await subtle.decrypt(
+    {
+      name: 'AES-GCM',
+      iv,
+      tagLength: 128,
+    },
+    fek,
+    ciphertextBuffer
+  );
+
   return Buffer.from(plain);
 }
-
-async function uploadEncrypted(token, plainBuffer, { filename = 'secret.pdf', mimeType = 'application/pdf', overrides = {} } = {}) {
+async function uploadEncrypted(
+  token,
+  plainBuffer,
+  {
+    filename = 'secret.pdf',
+    mimeType = 'application/pdf',
+    overrides = {},
+  } = {}
+) {
   const enc = await encryptForTest(plainBuffer);
+
   const fields = {
     iv: enc.ivBase64,
     keyMetadata: KEY_METADATA_JSON,
     mimeType,
     originalSize: String(plainBuffer.length),
+
+    // Required by the backend file-key hierarchy.
+    wrappedFek: enc.wrappedFekBase64,
+    wrapIv: enc.wrapIvBase64,
+
     ...overrides,
   };
-  let req = request(app).post('/api/files').set(bearer(token));
-  for (const [k, v] of Object.entries(fields)) req = req.field(k, v);
-  const res = await req.attach('file', enc.ciphertext, { filename, contentType: 'application/octet-stream' });
+
+  let req = request(app)
+    .post('/api/files')
+    .set(bearer(token));
+
+  for (const [k, v] of Object.entries(fields)) {
+    req = req.field(k, v);
+  }
+
+  const res = await req.attach(
+    'file',
+    enc.ciphertext,
+    {
+      filename,
+      contentType: 'application/octet-stream',
+    }
+  );
+
   return { res, enc };
 }
 
@@ -94,17 +404,26 @@ test('full pipeline: encrypt, upload, list, download, decrypt matches original, 
   await request(app).delete(`/api/files/${file.id}`).set(bearer(token)).expect(200);
 });
 
-test('data stored on disk is ciphertext, never plaintext', async () => {
+test('data stored in S3 is ciphertext, never plaintext (verified via the SDK directly)', async () => {
+  const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+  const { s3, BUCKET } = await import('../src/config/s3.js');
+
   const { token, user } = await registerAndLogin();
-  const plaintext = Buffer.from('Sensitive on-disk content check.');
-  const { res: uploadRes } = await uploadEncrypted(token, plaintext);
+  const masterKey = await makeMasterKey();
+  const plaintext = Buffer.from('Sensitive S3 content check.');
+  const { res: uploadRes } = await uploadEncrypted(token, plaintext, masterKey);
   const file = uploadRes.body.data.file;
 
-  const onDiskPath = path.resolve(process.cwd(), 'storage', 'users', String(user.id), 'files', file.id);
-  const onDiskBytes = await fs.readFile(onDiskPath);
+  // Reads the object directly from S3 with the SDK, bypassing our own API entirely,
+  // to independently confirm the bucket itself never holds plaintext.
+  const s3Key = `users/${user.id}/files/${file.id}`;
+  const result = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: s3Key }));
+  const chunks = [];
+  for await (const chunk of result.Body) chunks.push(chunk);
+  const onDiskBytes = Buffer.concat(chunks);
 
-  assert.equal(onDiskBytes.length, plaintext.length + 16);
-  assert.ok(!onDiskBytes.includes(plaintext), 'plaintext bytes must not appear in the stored object');
+  assert.equal(onDiskBytes.length, plaintext.length + 16); // + GCM tag
+  assert.ok(!onDiskBytes.includes(plaintext), 'plaintext bytes must not appear in the S3 object');
 
   await request(app).delete(`/api/files/${file.id}`).set(bearer(token)).expect(200);
 });

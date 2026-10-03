@@ -2,7 +2,13 @@ import app from './app.js';
 import { env, assertProductionConfig} from './config/env.js';
 import { closePool } from './config/env.js';
 import { purgeExpired } from './models/revokedToken.model.js';
+import { checkBucketAccess } from './services/storage.service.js';
 
+if (env.nodeEnv !== 'test') {
+  checkBucketAccess()
+    .then(() => console.log(`[s3] Bucket "${env.aws.bucket}" is reachable`))
+    .catch((err) => console.error(`[s3] WARNING: cannot reach bucket "${env.aws.bucket}": ${err.name} — ${err.message}`));
+}
 assertProductionConfig ();
 
 // Housekeeping: drop revocation entries whose tokens have expired anyway.
