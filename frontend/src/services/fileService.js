@@ -8,7 +8,7 @@ function requireMasterKey() {
   return key;
 }
 
-export async function uploadFile(file, { onProgress, onStageChange } = {}) {
+export async function uploadFile(file, { onProgress, onStageChange, userSensitivity = 0 } = {}) {
   const masterKey = requireMasterKey();
   onStageChange?.('encrypting');
   const enc = await encryptFileForUpload(file, masterKey);
@@ -22,12 +22,18 @@ export async function uploadFile(file, { onProgress, onStageChange } = {}) {
   formData.append('originalSize', String(enc.originalSize));
   formData.append('wrappedFek', enc.wrappedFekBase64);
   formData.append('wrapIv', enc.wrapIvBase64);
+  formData.append('userSensitivity', String(userSensitivity)); // drives server-side risk scoring, Phase 10
 
   const res = await api.post('/files', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: (evt) => { if (evt.total) onProgress?.(Math.round((evt.loaded / evt.total) * 100)); },
   });
   return res.data.data.file;
+}
+
+export async function getRiskBreakdown(id) {
+  const res = await api.get(`/files/${id}/risk`);
+  return res.data.data;
 }
 
 export async function listFiles() {

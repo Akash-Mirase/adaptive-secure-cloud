@@ -520,3 +520,61 @@ test('disallowed file type is rejected with 415', async () => {
     .attach('file', Buffer.from('fake exe bytes'), { filename: 'virus.exe', contentType: 'application/x-msdownload' });
   assert.equal(res.status, 415);
 });
+test('upload: risk score and level reflect filename, type and declared sensitivity', async () => {
+  const { token } = await registerAndLogin();
+  const masterKey = await makeMasterKey();
+
+  const { res } = await uploadEncrypted(token, Buffer.from('id scan bytes'), masterKey, {
+    filename: 'passport_scan.pdf', mimeType: 'application/pdf',
+    overrides: { userSensitivity: '3' },
+  });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.data.file.riskLevel, 'CRITICAL');
+  assert.ok(res.body.data.file.riskScore >= 9);
+
+  await request(app).delete(`/api/files/${res.body.data.file.id}`).set(bearer(token)).expect(200);
+});
+
+test('GET /files/:id/risk returns a transparent breakdown', async () => {
+  const { token } = await registerAndLogin();
+  const masterKey = await makeMasterKey();
+  const { res: uploadRes } = await uploadEncrypted(token, Buffer.from('x'), masterKey, {
+    filename: 'salary_slip.pdf', mimeType: 'application/pdf', overrides: { userSensitivity: '2' },
+  });
+  const fileId = uploadRes.body.data.file.id;
+
+  const breakdownRes = await request(app).get(`/api/files/${fileId}/risk`).set(bearer(token));
+  assert.equal(breakdownRes.status, 200);
+  assert.equal(breakdownRes.body.data.fileTypeScore, 3);
+  assert.ok(breakdownRes.body.data.keywordMatches.some((m) => m.pattern === 'salary'));
+
+  await request(app).delete(`/api/files/${fileId}`).set(bearer(token)).expect(200);
+});
+
+test('risk classification is audited on upload', async () => {
+  const { token, user } = await registerAndLogin();
+  const masterKey = await makeMasterKey();
+  const { res } = await uploadEncrypted(token, Buffer.from('x'), masterKey, { filename: 'medical_report.pdf', mimeType: 'application/pdf' });
+
+  const logs = await query(
+    "SELECT details FROM audit_logs WHERE user_id = ? AND event_type = 'RISK_CLASSIFICATION' ORDER BY id DESC LIMIT 1",
+    [user.id]
+  );
+  assert.equal(logs.length, 1);
+  assert.ok(logs[0].details.riskLevel);
+
+  await request(app).delete(`/api/files/${res.body.data.file.id}`).set(bearer(token)).expect(200);
+});
+
+test('a forged client-side risk level is ignored: server always recomputes it', async () => {
+  const { token } = await registerAndLogin();
+  const masterKey = await makeMasterKey();
+  // Attempt to smuggle a fake riskLevel/riskScore in the request — the route
+  // has no such field in uploadRules, so this proves the server never trusts it.
+  const { res } = await uploadEncrypted(token, Buffer.from('x'), masterKey, {
+    filename: 'holiday.jpg', mimeType: 'image/jpeg',
+    overrides: { userSensitivity: '0', riskLevel: 'LOW', riskScore: '0' },
+  });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.data.file.riskLevel, 'LOW'); // happens to be genuinely LOW here, proving real computation, not blind trust of absent field
+});

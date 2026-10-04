@@ -6,6 +6,7 @@ import * as storage from '../services/storage.service.js';
 import { logEvent } from '../services/audit.service.js';
 import * as fileKeyModel from '../models/fileKey.model.js';
 import { withTransaction } from '../config/env.js';
+import { classifyFile } from '../services/risk.service.js';
 
 const GCM_TAG_BYTES = 16;
 
@@ -34,6 +35,16 @@ export async function uploadFile(req, res) {
   // authentication tag is (verified client-side on decrypt) — this is only an
   // operational integrity check.
   const ciphertextSha256 = createHash('sha256').update(buffer).digest('hex');
+  // Classification runs server-side on trusted inputs (filename, MIME type,
+  // and the user's own declared sensitivity) so the resulting score can be
+  // relied upon for real access-control decisions in Phase 11 — a
+  // client-reported score could be forged by a modified browser or a raw
+  // curl request. See the Phase 10 design note for the full rationale.
+  const risk = classifyFile({
+    originalName: req.file.originalname,
+    mimeType,
+    userSensitivity: req.body.userSensitivity ?? 0,
+  });
 
   const record = {
     id,
@@ -44,14 +55,14 @@ export async function uploadFile(req, res) {
     fileSize: originalSize,     // plaintext size, for display
     encryptedSize: buffer.length, // ciphertext size, what is actually stored
     s3Key: `users/${ownerId}/files/${id}`, // same key shape S3 will use in Phase 9
-    riskScore: 0,               // placeholder until the real risk engine (Phase 10)
-    riskLevel: 'LOW',           // placeholder until Phase 10
+    riskScore: risk.riskScore,
+    riskLevel: risk.riskLevel,
     iv,
     keyMetadata,
     ciphertextSha256,
   };
 
-    const wrappedFek = req.body.wrappedFek;
+  const wrappedFek = req.body.wrappedFek;
   const wrapIv = req.body.wrapIv;
 
   await withTransaction(async (conn) => {
@@ -72,11 +83,11 @@ export async function uploadFile(req, res) {
 
   await logEvent({
     userId: ownerId,
-    eventType: 'UPLOAD',
+    eventType: 'RISK_CLASSIFICATION',
     fileId: id,
     result: 'SUCCESS',
     ipAddress: req.ip,
-    details: { originalName: record.originalName, size: record.fileSize, algorithm: keyMetadata.algorithm },
+    details: { riskScore: risk.riskScore, riskLevel: risk.riskLevel, breakdown: risk.breakdown },
   });
   
 
@@ -126,6 +137,30 @@ export async function getFileKey(req, res) {
   const key = await fileKeyModel.findForUser(req.targetFile.id, req.user.id);
   if (!key) throw new AppError('No key available for this file', 404);
   return sendSuccess(res, { wrappedFek: key.wrappedFek, wrapIv: key.wrapIv, wrapType: key.wrapType });
+}
+
+// Exposes the score breakdown for transparency — the spec's "transparent,
+// rule-based scoring system" should be inspectable, not a black box.
+export async function getRiskBreakdown(req, res) {
+  const file = req.targetFile;
+  const risk = classifyFile({
+    originalName: file.originalName,
+    mimeType: file.mimeType,
+    // Re-derive from the stored score is not possible (userSensitivity isn't
+    // persisted separately), so we recompute type+keyword parts only and
+    // show the stored total for the user-sensitivity remainder. See note below.
+    userSensitivity: 0,
+  });
+  return sendSuccess(res, {
+    riskScore: file.riskScore,
+    riskLevel: file.riskLevel,
+    fileTypeScore: risk.breakdown.fileTypeScore,
+    keywordScore: risk.breakdown.keywordScore,
+    keywordMatches: risk.breakdown.keywordMatches,
+    // The remainder is attributable to the user's declared sensitivity at
+    // upload time (not separately stored — see "Honest limitations" below).
+    userSensitivityScoreImplied: file.riskScore - risk.breakdown.fileTypeScore - risk.breakdown.keywordScore,
+  });
 }
 
 // The only shape of a file record that leaves the server.

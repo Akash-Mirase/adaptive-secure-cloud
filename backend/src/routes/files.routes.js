@@ -10,6 +10,7 @@ import * as filesController from '../controllers/files.controller.js';
 const router = Router();
 
 router.use(authenticate);
+router.get('/:id/risk', fileIdParamRules, validate, loadFile, asyncHandler(filesController.getRiskBreakdown));
 
 // SECURITY: the backend REFUSES any upload that is not declared as
 // AES-256-GCM ciphertext. This is defense in depth — even if the frontend
@@ -36,6 +37,9 @@ const uploadRules = [
   body('originalSize')
     .isInt({ min: 0 }).withMessage('originalSize must be a non-negative integer').bail()
     .toInt(),
+      body('userSensitivity')
+    .optional()
+    .isInt({ min: 0, max: 3 }).withMessage('userSensitivity must be an integer from 0 to 3').toInt(),
 ];
 
 router.post('/', uploadSingleFile, uploadRules, validate, asyncHandler(filesController.uploadFile));

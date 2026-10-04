@@ -5,12 +5,14 @@ import RiskBadge from '../components/RiskBadge.jsx'
 import * as fileService from '../services/fileService.js'
 import { parseApiError } from '../utils/apiError.js'
 import { formatBytes, formatDate } from '../utils/format.js'
+import RiskBreakdownModal from '../components/RiskBreakdownModal.jsx'
 
 export default function Files () {
   const [files, setFiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState(null)
+  const [detailsId, setDetailsId] = useState(null)
 
   const load = async () => {
     setLoading(true)
@@ -130,12 +132,21 @@ export default function Files () {
                     >
                       Download
                     </button>
+
                     <button
                       className='btn btn-sm btn-outline-secondary me-1'
                       disabled
                     >
                       Share
                     </button>
+
+                    <button
+                      className='btn btn-sm btn-outline-dark me-1'
+                      onClick={() => setDetailsId(f.id)}
+                    >
+                      Details
+                    </button>
+
                     <button
                       className='btn btn-sm btn-outline-danger'
                       disabled={busyId === f.id}
@@ -150,6 +161,12 @@ export default function Files () {
           </table>
         </div>
       </div>
+      {detailsId && (
+        <RiskBreakdownModal
+          fileId={detailsId}
+          onClose={() => setDetailsId(null)}
+        />
+      )}
     </>
   )
 }

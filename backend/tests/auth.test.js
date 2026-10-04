@@ -12,10 +12,25 @@ const { createAuthLimiter } = await import('../src/middleware/rateLimiters.js');
 const fieldsOf = (res) => [...new Set(res.body.errors.map((e) => e.field))].sort();
 const nowSec = () => Math.floor(Date.now() / 1000);
 
+const validKeyBundle = {
+  kdfIterations: 250000,
+  kdfSalt: 'AAAAAAAAAAAAAAAAAAAAAA==',
+  masterKeyIv: 'AAAAAAAAAAAAAAAA',
+  recoveryKey: 'AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA',
+  recoveryIv: 'AAAAAAAAAAAAAAAA',
+  recoveryWrappedMasterKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+  wrappedMasterKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+};
 test('register: invalid input gets per-field errors', async () => {
   const res = await request(app)
     .post('/api/auth/register')
-    .send({ name: 'A', email: 'nope', password: 'short' });
+    .send({
+      name: 'A',
+      email: 'nope',
+      password: 'short',
+      ...validKeyBundle,
+    });
+
   assert.equal(res.status, 400);
   assert.deepEqual(fieldsOf(res), ['email', 'name', 'password']);
 });
@@ -30,7 +45,13 @@ test('register: wrong types (objects/arrays) are rejected', async () => {
 test('register: password over 72 bytes is rejected', async () => {
   const res = await request(app)
     .post('/api/auth/register')
-    .send({ name: 'Alice', email: 'alice@example.com', password: 'a'.repeat(73) });
+    .send({
+      name: 'Alice',
+      email: 'alice@example.com',
+      password: 'a'.repeat(73),
+      ...validKeyBundle,
+    });
+
   assert.equal(res.status, 400);
   assert.deepEqual(fieldsOf(res), ['password']);
 });

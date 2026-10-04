@@ -16,6 +16,7 @@ const STAGE_LABEL = {
 
 export default function Upload() {
   const [file, setFile] = useState(null);
+  const [sensitivity, setSensitivity] = useState(1);
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState('idle');
   const [error, setError] = useState('');
@@ -36,6 +37,7 @@ export default function Upload() {
       const result = await fileService.uploadFile(file, {
         onStageChange: setStage,
         onProgress: setProgress,
+        userSensitivity: sensitivity,
       });
       setUploaded(result);
       setStage('done');
@@ -55,20 +57,39 @@ export default function Upload() {
         <div className="card-body">
           <div className="mb-3">
             <label className="form-label" htmlFor="file">Choose a file</label>
-            <input id="file" type="file" className="form-control" onChange={handleSelect} disabled={stage === 'encrypting' || stage === 'uploading'} />
+            <input id="file" type="file" className="form-control" onChange={handleSelect}
+              disabled={stage === 'encrypting' || stage === 'uploading'} />
+          </div>
+
+          <div className="mb-3">
+            <label className="form-label" htmlFor="sens">Your sensitivity rating</label>
+            <select id="sens" className="form-select" value={sensitivity}
+              onChange={(e) => setSensitivity(Number(e.target.value))}
+              disabled={stage === 'encrypting' || stage === 'uploading'}>
+              <option value={0}>0: Public</option>
+              <option value={1}>1: Normal</option>
+              <option value={2}>2: Private</option>
+              <option value={3}>3: Highly sensitive</option>
+            </select>
+            <div className="form-text">
+              This is one of three inputs (with file type and filename keywords) that determine
+              the file's risk level and the security controls applied to it.
+            </div>
           </div>
 
           {file && (
             <ul className="list-group mb-3">
               <li className="list-group-item d-flex justify-content-between"><span>File name</span><span>{file.name}</span></li>
               <li className="list-group-item d-flex justify-content-between"><span>File size</span><span>{formatBytes(file.size)}</span></li>
-              <li className="list-group-item d-flex justify-content-between"><span>Risk score / level</span><span className="text-muted">Phase 10</span></li>
               <li className="list-group-item d-flex justify-content-between"><span>Encryption</span><span>AES-256-GCM, unique key + IV per file</span></li>
-              <li className="list-group-item d-flex justify-content-between"><span>Upload status</span><span>{STAGE_LABEL[stage]}{stage === 'uploading' ? ` (${progress}%)` : ''}</span></li>
+              <li className="list-group-item d-flex justify-content-between">
+                <span>Upload status</span>
+                <span>{STAGE_LABEL[stage]}{stage === 'uploading' ? ` (${progress}%)` : ''}</span>
+              </li>
             </ul>
           )}
 
-          {(stage === 'uploading') && (
+          {stage === 'uploading' && (
             <div className="progress mb-3" style={{ height: 10 }}>
               <div className="progress-bar" style={{ width: `${progress}%` }} />
             </div>
@@ -86,9 +107,11 @@ export default function Upload() {
                 <span>Uploaded <strong>{uploaded.originalName}</strong></span>
                 <RiskBadge level={uploaded.riskLevel} />
               </div>
-              <div className="small font-monospace">
+              <div className="small">
+                Risk score: <strong>{uploaded.riskScore}</strong> / 11 &middot; Level: <strong>{uploaded.riskLevel}</strong>
+              </div>
+              <div className="small font-monospace mt-2">
                 Algorithm: {uploaded.encryptionAlgorithm}<br />
-                IV (base64, not secret): {uploaded.iv}<br />
                 Plaintext size: {formatBytes(uploaded.fileSize)} · Ciphertext size: {formatBytes(uploaded.encryptedSize)}
               </div>
               <Link to="/files" className="btn btn-sm btn-outline-success mt-2">Go to My Files</Link>
