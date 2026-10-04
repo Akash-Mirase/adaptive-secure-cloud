@@ -12,3 +12,19 @@ export async function logEvent({ userId, eventType, fileId, result, ipAddress, d
     console.error('[audit] failed to write log:', err.code || err.message);
   }
 }
+
+export async function queryAuditLogs(filters, pagination) {
+  const [logs, total] = await Promise.all([
+    auditLogs.listFiltered(filters, pagination),
+    auditLogs.countFiltered(filters),
+  ]);
+  return { logs, total };
+}
+
+export async function getSecurityStats(filters) {
+  const [byEventType, byResult] = await Promise.all([
+    auditLogs.countByEventType(filters),
+    auditLogs.countByResult(filters),
+  ]);
+  return { byEventType, byResult };
+}

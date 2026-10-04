@@ -1,6 +1,6 @@
-import { NavLink, Outlet, Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth.js';
-import UnlockPrompt from '../components/UnlockPrompt.jsx';
+import { NavLink, Outlet, Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth.js'
+import UnlockPrompt from '../components/UnlockPrompt.jsx'
 
 const links = [
   ['/dashboard', 'Dashboard'],
@@ -9,33 +9,39 @@ const links = [
   ['/shared', 'Shared with me'],
   ['/security', 'Security'],
   ['/audit', 'Audit log'],
-  ['/profile', 'Profile'],
-];
+  ['/profile', 'Profile']
+]
 
-export default function AppLayout() {
-  const { user, logout, cryptoStatus } = useAuth();
-  const navigate = useNavigate();
+export default function AppLayout () {
+  const { user, logout, cryptoStatus } = useAuth()
+  const navigate = useNavigate()
 
   const handleSignOut = async () => {
-    await logout();
-    navigate('/login', { replace: true });
-  };
+    await logout()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <>
-      <nav className="navbar navbar-dark bg-dark">
-        <div className="container-fluid">
-          <Link to="/dashboard" className="navbar-brand">
+      <nav className='navbar navbar-dark bg-dark'>
+        <div className='container-fluid'>
+          <Link to='/dashboard' className='navbar-brand'>
             Adaptive Secure Cloud
           </Link>
 
-          <div className="d-flex align-items-center gap-3">
-            <span className="text-light small d-none d-sm-inline">
+          <div className='d-flex align-items-center gap-3'>
+            <span className='text-light small d-none d-sm-inline'>
               {user?.name}
+            </span>
+            <span className='text-light small d-none d-sm-inline'>
+              {user?.name}
+              {user?.role === 'ADMIN' && (
+                <span className='badge text-bg-warning ms-1'>ADMIN</span>
+              )}
             </span>
 
             <button
-              className="btn btn-outline-light btn-sm"
+              className='btn btn-outline-light btn-sm'
               onClick={handleSignOut}
             >
               Sign out
@@ -44,19 +50,16 @@ export default function AppLayout() {
         </div>
       </nav>
 
-      <div className="container-fluid">
-        <div className="row">
-
-          <aside className="col-md-3 col-lg-2 bg-body-tertiary border-end py-3 min-vh-md-100">
-            <ul className="nav flex-md-column nav-pills gap-1 px-2">
+      <div className='container-fluid'>
+        <div className='row'>
+          <aside className='col-md-3 col-lg-2 bg-body-tertiary border-end py-3 min-vh-md-100'>
+            <ul className='nav flex-md-column nav-pills gap-1 px-2'>
               {links.map(([to, label]) => (
-                <li className="nav-item" key={to}>
+                <li className='nav-item' key={to}>
                   <NavLink
                     to={to}
                     className={({ isActive }) =>
-                      `nav-link ${
-                        isActive ? 'active' : 'text-dark'
-                      }`
+                      `nav-link ${isActive ? 'active' : 'text-dark'}`
                     }
                   >
                     {label}
@@ -66,16 +69,11 @@ export default function AppLayout() {
             </ul>
           </aside>
 
-          <main className="col-md-9 col-lg-10 py-4 px-md-4">
-            {cryptoStatus === 'unlocked' ? (
-              <Outlet />
-            ) : (
-              <UnlockPrompt />
-            )}
+          <main className='col-md-9 col-lg-10 py-4 px-md-4'>
+            {cryptoStatus === 'unlocked' ? <Outlet /> : <UnlockPrompt />}
           </main>
-
         </div>
       </div>
     </>
-  );
+  )
 }
