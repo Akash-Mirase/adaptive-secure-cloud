@@ -63,3 +63,12 @@ export async function resetFailedLogins(id, executor) {
 export async function updatePasswordHash(id, passwordHash, executor) {
   await query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, id], executor);
 }
+
+// Only the step-up flow needs to re-check a password mid-session. Kept
+// separate from findById so the password hash is never part of the normal
+// user-loading path used everywhere else.
+export async function findAuthRecordById(id, executor) {
+  const rows = await query('SELECT * FROM users WHERE id = ?', [id], executor);
+  if (!rows[0]) return null;
+  return { ...toUser(rows[0]), passwordHash: rows[0].password_hash };
+}

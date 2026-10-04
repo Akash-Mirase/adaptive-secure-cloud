@@ -7,6 +7,7 @@ import { logEvent } from '../services/audit.service.js';
 import * as fileKeyModel from '../models/fileKey.model.js';
 import { withTransaction } from '../config/env.js';
 import { classifyFile } from '../services/risk.service.js';
+import { getPolicy } from '../config/securityPolicies.js';
 
 const GCM_TAG_BYTES = 16;
 
@@ -143,23 +144,22 @@ export async function getFileKey(req, res) {
 // rule-based scoring system" should be inspectable, not a black box.
 export async function getRiskBreakdown(req, res) {
   const file = req.targetFile;
-  const risk = classifyFile({
-    originalName: file.originalName,
-    mimeType: file.mimeType,
-    // Re-derive from the stored score is not possible (userSensitivity isn't
-    // persisted separately), so we recompute type+keyword parts only and
-    // show the stored total for the user-sensitivity remainder. See note below.
-    userSensitivity: 0,
-  });
+  const risk = classifyFile({ originalName: file.originalName, mimeType: file.mimeType, userSensitivity: 0 });
+  const policy = getPolicy(file.riskLevel);
+
   return sendSuccess(res, {
     riskScore: file.riskScore,
     riskLevel: file.riskLevel,
     fileTypeScore: risk.breakdown.fileTypeScore,
     keywordScore: risk.breakdown.keywordScore,
     keywordMatches: risk.breakdown.keywordMatches,
-    // The remainder is attributable to the user's declared sensitivity at
-    // upload time (not separately stored — see "Honest limitations" below).
     userSensitivityScoreImplied: file.riskScore - risk.breakdown.fileTypeScore - risk.breakdown.keywordScore,
+    policy: {
+      requiresStepUp: policy.requiresStepUp,
+      stepUpValiditySeconds: policy.stepUpValiditySeconds,
+      maxSharePermission: policy.maxSharePermission,
+      auditLevel: policy.auditLevel,
+    },
   });
 }
 

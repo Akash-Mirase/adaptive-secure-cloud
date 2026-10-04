@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import request from 'supertest';
 import crypto from 'node:crypto';
+import jwt from 'jsonwebtoken';
 
 const { webcrypto } = crypto;
 
@@ -368,6 +369,115 @@ async function uploadEncrypted(
 
   return { res, enc };
 }
+test('LOW/MEDIUM files download without any step-up token', async () => {
+  const { token } = await registerAndLogin();
+  const masterKey = await makeMasterKey();
+  const { res: uploadRes } = await uploadEncrypted(token, Buffer.from('ordinary content'), masterKey, { filename: 'notes.txt', mimeType: 'text/plain' });
+  const file = uploadRes.body.data.file;
+  assert.equal(file.riskLevel, 'LOW');
+
+  assert.equal((await request(app).get(`/api/files/${file.id}/download`).set(bearer(token))).status, 200);
+  await request(app).delete(`/api/files/${file.id}`).set(bearer(token)).expect(200);
+});
+
+test('HIGH/CRITICAL file access is blocked with 428 until step-up is verified', async () => {
+  const { token } = await registerAndLogin();
+  const masterKey = await makeMasterKey();
+  const { res: uploadRes } = await uploadEncrypted(token, Buffer.from('sensitive id scan'), masterKey, {
+    filename: 'passport_scan.pdf', mimeType: 'application/pdf', overrides: { userSensitivity: '3' },
+  });
+  const file = uploadRes.body.data.file;
+  assert.equal(file.riskLevel, 'CRITICAL');
+
+  assert.equal((await request(app).get(`/api/files/${file.id}/download`).set(bearer(token))).status, 428);
+  assert.equal((await request(app).get(`/api/files/${file.id}/key`).set(bearer(token))).status, 428);
+
+  const stepUp = await request(app).post('/api/auth/step-up').set(bearer(token)).send({ password: PASSWORD }).expect(200);
+  const stepUpToken = stepUp.body.data.stepUpToken;
+
+  assert.equal((await request(app).get(`/api/files/${file.id}/download`).set(bearer(token)).set('X-Step-Up-Token', stepUpToken)).status, 200);
+  assert.equal((await request(app).get(`/api/files/${file.id}/key`).set(bearer(token)).set('X-Step-Up-Token', stepUpToken)).status, 200);
+
+  await request(app).delete(`/api/files/${file.id}`).set(bearer(token)).expect(200);
+});
+
+test('a step-up token fresh enough for HIGH is stale for CRITICAL', async () => {
+  const { token, user } = await registerAndLogin();
+  const masterKey = await makeMasterKey();
+  const { res: uploadRes } = await uploadEncrypted(token, Buffer.from('x'), masterKey, {
+    filename: 'medical_report_confidential.pdf', mimeType: 'application/pdf', overrides: { userSensitivity: '3' },
+  });
+  const file = uploadRes.body.data.file;
+  assert.equal(file.riskLevel, 'CRITICAL');
+
+  // Forge a token whose iat is 200s old, using the SAME secret the app uses:
+  // within HIGH's 600s window, but past CRITICAL's 120s window.
+  const staleIat = Math.floor(Date.now() / 1000) - 200;
+  const staleToken = jwt.sign(
+    { purpose: 'step-up', iat: staleIat }, process.env.JWT_SECRET,
+    { algorithm: 'HS256', subject: String(user.id), jwtid: 'stale-test', issuer: 'adaptive-secure-cloud', expiresIn: '10m' }
+  );
+
+  const res = await request(app).get(`/api/files/${file.id}/download`).set(bearer(token)).set('X-Step-Up-Token', staleToken);
+  assert.equal(res.status, 428);
+
+  await request(app).delete(`/api/files/${file.id}`).set(bearer(token)).expect(200);
+});
+
+test("a step-up token belonging to a different user is rejected", async () => {
+  const owner = await registerAndLogin();
+  const attacker = await registerAndLogin();
+  const masterKey = await makeMasterKey();
+  const { res: uploadRes } = await uploadEncrypted(owner.token, Buffer.from('x'), masterKey, {
+    filename: 'passport_owner.pdf', mimeType: 'application/pdf', overrides: { userSensitivity: '3' },
+  });
+  const file = uploadRes.body.data.file;
+
+  const attackerStepUp = await request(app).post('/api/auth/step-up').set(bearer(attacker.token)).send({ password: PASSWORD }).expect(200);
+  const res = await request(app)
+    .get(`/api/files/${file.id}/download`)
+    .set(bearer(owner.token))
+    .set('X-Step-Up-Token', attackerStepUp.body.data.stepUpToken);
+  assert.equal(res.status, 428);
+
+  await request(app).delete(`/api/files/${file.id}`).set(bearer(owner.token)).expect(200);
+});
+
+test('SECURITY_POLICY_APPLIED is audited on both denial and success', async () => {
+  const { token, user } = await registerAndLogin();
+  const masterKey = await makeMasterKey();
+  const { res: uploadRes } = await uploadEncrypted(token, Buffer.from('x'), masterKey, {
+    filename: 'salary_confidential.pdf', mimeType: 'application/pdf', overrides: { userSensitivity: '3' },
+  });
+  const file = uploadRes.body.data.file;
+
+  await request(app).get(`/api/files/${file.id}/download`).set(bearer(token)); // denied
+  const stepUp = await request(app).post('/api/auth/step-up').set(bearer(token)).send({ password: PASSWORD }).expect(200);
+  await request(app).get(`/api/files/${file.id}/download`).set(bearer(token)).set('X-Step-Up-Token', stepUp.body.data.stepUpToken); // success
+
+  const logs = await query(
+    "SELECT result FROM audit_logs WHERE user_id = ? AND event_type = 'SECURITY_POLICY_APPLIED' AND file_id = ? ORDER BY id",
+    [user.id, file.id]
+  );
+  assert.deepEqual(logs.map((l) => l.result), ['DENIED', 'SUCCESS']);
+
+  await request(app).delete(`/api/files/${file.id}`).set(bearer(token)).expect(200);
+});
+
+test('risk breakdown includes the applicable adaptive policy', async () => {
+  const { token } = await registerAndLogin();
+  const masterKey = await makeMasterKey();
+  const { res: uploadRes } = await uploadEncrypted(token, Buffer.from('x'), masterKey, {
+    filename: 'passport.pdf', mimeType: 'application/pdf', overrides: { userSensitivity: '3' },
+  });
+  const file = uploadRes.body.data.file;
+
+  const breakdown = await request(app).get(`/api/files/${file.id}/risk`).set(bearer(token));
+  assert.equal(breakdown.body.data.policy.requiresStepUp, true);
+  assert.equal(breakdown.body.data.policy.maxSharePermission, 'VIEW');
+
+  await request(app).delete(`/api/files/${file.id}`).set(bearer(token)).expect(200);
+});
 
 test('upload requires authentication', async () => {
   const res = await request(app).post('/api/files').attach('file', Buffer.from('hi'), 'note.txt');

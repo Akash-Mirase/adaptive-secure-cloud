@@ -1,20 +1,20 @@
 import axios from 'axios';
 import { getToken, clearToken } from '../utils/tokenStorage.js';
+import { getStepUpToken } from '../utils/stepUpSession.js';   // ← check this import exists
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api',
   timeout: 15000,
 });
 
-// Attach the JWT to every request.
 api.interceptors.request.use((config) => {
   const token = getToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  const stepUp = getStepUpToken();                              // ← check this
+  if (stepUp) config.headers['X-Step-Up-Token'] = stepUp;       // ← and this
   return config;
 });
 
-// If the server says our session is invalid or expired, drop it and tell the app.
-// Login and register 401/409 errors are normal user errors, so they are excluded.
 api.interceptors.response.use(
   (response) => response,
   (error) => {

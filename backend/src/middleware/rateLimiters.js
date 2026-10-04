@@ -19,3 +19,4 @@ export const loginLimiter = createAuthLimiter({ skipSuccessfulRequests: true });
 export const registerLimiter = createAuthLimiter();
 // Recovery is powerful (it resets the password), so it gets the tightest limit.
 export const recoveryLimiter = createAuthLimiter({ limit: env.nodeEnv === 'test' ? 1000 : 5, skipSuccessfulRequests: false });
+export const stepUpLimiter = createAuthLimiter({ limit: env.nodeEnv === 'test' ? 1000 : 10, skipSuccessfulRequests: true });

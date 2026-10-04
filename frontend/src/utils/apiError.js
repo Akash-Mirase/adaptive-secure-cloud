@@ -10,3 +10,5 @@ export function parseApiError(err) {
   if (err instanceof Error) return { message: err.message, fieldErrors: {} };
   return { message: 'Cannot reach the server. Is the backend running?', fieldErrors: {} };
 }
+
+export const isStepUpRequired = (err) => err?.response?.status === 428;

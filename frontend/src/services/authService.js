@@ -37,3 +37,7 @@ export async function getRecoveryBundle(email) {
 export async function recoverAccount(payload) {
   await api.post('/auth/recover', payload);
 }
+export async function requestStepUp(password) {
+  const res = await api.post('/auth/step-up', { password });
+  return res.data.data; // { stepUpToken, expiresAt }
+}

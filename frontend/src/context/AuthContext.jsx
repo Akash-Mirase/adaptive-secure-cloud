@@ -5,6 +5,7 @@ import { deriveKek } from '../crypto/kdf.js';
 import { unwrapMasterKey } from '../crypto/masterKey.js';
 import { base64ToBuffer } from '../crypto/encoding.js';
 import { setMasterKey, clearMasterKey, isUnlocked } from '../crypto/masterKeySession.js';
+import { clearStepUpToken } from '../utils/stepUpSession.js';
 
 export const AuthContext = createContext(null);
 
@@ -26,7 +27,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const onExpired = () => { setUser(null); setCryptoStatus('unknown'); clearMasterKey(); };
+    const onExpired = () => { setUser(null); setCryptoStatus('unknown'); clearMasterKey(),clearStepUpToken(); };
     window.addEventListener('auth:expired', onExpired);
     return () => window.removeEventListener('auth:expired', onExpired);
   }, []);
@@ -56,6 +57,7 @@ export function AuthProvider({ children }) {
     try { await authService.logout(); } catch { /* token may already be expired */ }
     clearToken();
     clearMasterKey();
+    clearStepUpToken();
     setUser(null);
     setCryptoStatus('unknown');
   }, []);

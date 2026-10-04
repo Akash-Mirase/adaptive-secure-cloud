@@ -67,7 +67,13 @@ test('/me without a token returns 401', async () => {
   assert.equal(res.status, 401);
   assert.equal(res.body.success, false);
 });
-
+test('a token missing the "access" purpose claim is rejected by authenticate', async () => {
+  const stepUpShaped = jwt.sign({ purpose: 'step-up' }, process.env.JWT_SECRET, {
+    algorithm: 'HS256', subject: '1', jwtid: 'x', issuer: 'adaptive-secure-cloud', expiresIn: '5m',
+  });
+  const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${stepUpShaped}`);
+  assert.equal(res.status, 401);
+});
 test('/me with a malformed Authorization header returns 401', async () => {
   for (const header of ['Bearer', 'Basic abc', 'Bearer a b', 'garbage']) {
     const res = await request(app).get('/api/auth/me').set('Authorization', header);

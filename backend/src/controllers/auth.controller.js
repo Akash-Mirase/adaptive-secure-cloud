@@ -55,3 +55,9 @@ export async function logout(req, res) {
   await authService.logoutUser({ user: req.user, auth: req.auth }, { ipAddress: req.ip });
   return sendSuccess(res, null, 'Logged out');
 }
+
+export async function stepUp(req, res) {
+  const { password } = req.body;
+  const result = await authService.stepUpVerify({ userId: req.user.id, password }, { ipAddress: req.ip });
+  return sendSuccess(res, result, 'Step-up verification successful');
+}

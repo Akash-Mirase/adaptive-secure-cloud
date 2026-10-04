@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { body, query as queryParam } from 'express-validator';
 import * as authController from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.js';
-import { loginLimiter, registerLimiter, recoveryLimiter } from '../middleware/rateLimiters.js';
 import { validate } from '../middleware/validate.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { loginLimiter, registerLimiter, recoveryLimiter, stepUpLimiter } from '../middleware/rateLimiters.js';
 
 const router = Router();
 
@@ -16,6 +16,10 @@ const passwordRules = (field) =>
     .isString().withMessage(`${field} must be text`).bail()
     .isLength({ min: 12 }).withMessage(`${field} must be at least 12 characters`).bail()
     .custom((value) => Buffer.byteLength(value, 'utf8') <= 72).withMessage(`${field} must be at most 72 bytes (bcrypt limit)`);
+
+const stepUpRules = [
+  body('password').isString().withMessage('password must be text').bail().isLength({ min: 1, max: 256 }).withMessage('password is required'),
+];
 
 const registerRules = [
   body('name').isString().withMessage('name must be text').bail().trim().isLength({ min: 2, max: 100 }).withMessage('name must be 2 to 100 characters'),
@@ -58,5 +62,5 @@ router.post('/logout', authenticate, asyncHandler(authController.logout));
 router.get('/keys', authenticate, asyncHandler(authController.getKeys));
 router.get('/recovery-bundle', recoveryLimiter, recoveryBundleRules, validate, asyncHandler(authController.getRecoveryBundle));
 router.post('/recover', recoveryLimiter, recoverRules, validate, asyncHandler(authController.recover));
-
+router.post('/step-up', stepUpLimiter, authenticate, stepUpRules, validate, asyncHandler(authController.stepUp));
 export default router;

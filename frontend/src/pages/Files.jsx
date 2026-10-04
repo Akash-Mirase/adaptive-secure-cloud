@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader.jsx'
 import RiskBadge from '../components/RiskBadge.jsx'
 import * as fileService from '../services/fileService.js'
-import { parseApiError } from '../utils/apiError.js'
 import { formatBytes, formatDate } from '../utils/format.js'
 import RiskBreakdownModal from '../components/RiskBreakdownModal.jsx'
+import StepUpModal from '../components/StepUpModal.jsx'
+import { parseApiError, isStepUpRequired } from '../utils/apiError.js';
 
 export default function Files () {
   const [files, setFiles] = useState([])
@@ -13,6 +14,7 @@ export default function Files () {
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState(null)
   const [detailsId, setDetailsId] = useState(null)
+  const [stepUpFile, setStepUpFile] = useState(null)
 
   const load = async () => {
     setLoading(true)
@@ -33,13 +35,28 @@ export default function Files () {
   const handleDownload = async file => {
     setBusyId(file.id)
     setError('')
+
     try {
       await fileService.downloadFile(file.id, file.originalName, file.mimeType)
     } catch (err) {
-      setError(parseApiError(err).message)
+      if (isStepUpRequired(err)) {
+        setStepUpFile(file)
+      } else {
+        setError(parseApiError(err).message)
+      }
     } finally {
       setBusyId(null)
     }
+  }
+
+  const handleStepUpVerified = async () => {
+    const file = stepUpFile
+
+    setStepUpFile(null)
+
+    if (!file) return
+
+    await handleDownload(file)
   }
 
   const handleDelete = async file => {
@@ -111,6 +128,14 @@ export default function Files () {
                   <td>
                     <RiskBadge level={f.riskLevel} />{' '}
                     <small className='text-muted'>({f.riskScore})</small>
+                    {(f.riskLevel === 'HIGH' || f.riskLevel === 'CRITICAL') && (
+                      <span
+                        className='ms-1'
+                        title='Requires step-up verification to open'
+                      >
+                        🔒
+                      </span>
+                    )}
                   </td>
                   <td>
                     <span
@@ -165,6 +190,15 @@ export default function Files () {
         <RiskBreakdownModal
           fileId={detailsId}
           onClose={() => setDetailsId(null)}
+        />
+      )}
+      {stepUpFile && (
+        <StepUpModal
+          riskLevel={stepUpFile.riskLevel}
+          onVerified={handleStepUpVerified}
+          onCancel={() => {
+            setStepUpFile(null)
+          }}
         />
       )}
     </>

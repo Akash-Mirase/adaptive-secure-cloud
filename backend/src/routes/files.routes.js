@@ -6,12 +6,15 @@ import { loadFile, fileIdParamRules } from '../middleware/fileAccess.js';
 import { validate } from '../middleware/validate.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import * as filesController from '../controllers/files.controller.js';
+import { enforceRiskPolicy } from '../middleware/riskPolicy.js';
+
 
 const router = Router();
 
 router.use(authenticate);
 router.get('/:id/risk', fileIdParamRules, validate, loadFile, asyncHandler(filesController.getRiskBreakdown));
-
+router.get('/:id/download', fileIdParamRules, validate, loadFile, enforceRiskPolicy, asyncHandler(filesController.downloadFile));
+router.get('/:id/key', fileIdParamRules, validate, loadFile, enforceRiskPolicy, asyncHandler(filesController.getFileKey));
 // SECURITY: the backend REFUSES any upload that is not declared as
 // AES-256-GCM ciphertext. This is defense in depth — even if the frontend
 // were bypassed or a bug shipped, the server-side gate still enforces the

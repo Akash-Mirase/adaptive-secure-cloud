@@ -174,7 +174,7 @@ export async function loginUser({ email, password }, { ipAddress } = {}) {
 function issueAccessToken(userId) {
   if (!env.jwt.secret) throw new Error('JWT_SECRET is not configured');
 
-  const token = jwt.sign({}, env.jwt.secret, {
+  const token = jwt.sign({ purpose: 'access' }, env.jwt.secret, {
     algorithm: 'HS256',
     expiresIn: env.jwt.expiresIn,
     subject: String(userId),
@@ -204,4 +204,58 @@ export async function logoutUser({ user, auth }, { ipAddress } = {}) {
     expiresAt: new Date(auth.exp * 1000),
   });
   await logEvent({ userId: user.id, eventType: 'LOGOUT', result: 'SUCCESS', ipAddress });
+}
+
+// The OUTER expiry here is just the longest window any policy currently
+// needs (HIGH's 10 minutes). A stricter policy (CRITICAL's 2 minutes)
+// re-checks freshness against the token's `iat` in riskPolicy.js, rather
+// than needing a separate token per risk level — one step-up covers every
+// file, with each file's own policy deciding how long it stays trusted for.
+const MAX_STEP_UP_VALIDITY_SECONDS = 600;
+
+function issueStepUpToken(userId) {
+  const token = jwt.sign({ purpose: 'step-up' }, env.jwt.secret, {
+    algorithm: 'HS256',
+    expiresIn: MAX_STEP_UP_VALIDITY_SECONDS,
+    subject: String(userId),
+    jwtid: randomUUID(),
+    issuer: JWT_ISSUER,
+  });
+  const { exp } = jwt.decode(token);
+  return { token, expiresAt: new Date(exp * 1000) };
+}
+
+// SECURITY: the purpose claim is checked here, not left to the caller, so
+// every call site gets the same guarantee — a normal access token can never
+// be mistaken for a step-up token, and vice versa (see authenticate() in
+// middleware/auth.js for the matching check on the other side).
+export function verifyStepUpToken(token) {
+  let claims;
+  try {
+    claims = jwt.verify(token, env.jwt.secret, { algorithms: ['HS256'], issuer: JWT_ISSUER });
+  } catch {
+    throw new AppError('Step-up verification required for this file', 428);
+  }
+  if (claims.purpose !== 'step-up') {
+    throw new AppError('Step-up verification required for this file', 428);
+  }
+  return claims;
+}
+
+// Re-confirms the CURRENT password of an ALREADY-authenticated user (req.user
+// is already known from the JWT; this only proves "you still know the
+// password right now"). It is intentionally the same factor as login — see
+// the Phase 11 scope note on why this is not full MFA.
+export async function stepUpVerify({ userId, password }, { ipAddress } = {}) {
+  const record = await users.findAuthRecordById(userId);
+  const passwordOk = record && (await bcrypt.compare(password, record.passwordHash));
+
+  if (!record || !passwordOk) {
+    await logEvent({ userId, eventType: 'STEP_UP_VERIFICATION', result: 'FAILURE', ipAddress });
+    throw new AppError('Incorrect password', 401);
+  }
+
+  const { token, expiresAt } = issueStepUpToken(userId);
+  await logEvent({ userId, eventType: 'STEP_UP_VERIFICATION', result: 'SUCCESS', ipAddress });
+  return { stepUpToken: token, expiresAt: expiresAt.toISOString() };
 }
