@@ -14,7 +14,10 @@
     "test:risk": "node --test tests/risk.test.js",
     "test:policy": "node --test tests/policy.test.js",
     "test:sharing": "node --test tests/sharing.integration.js",
-    "test:audit": "node --test tests/audit.integration.js"
+    "test:audit": "node --test tests/audit.integration.js",
+    "test:threats": "node --test tests/threatModel.integration.js",
+    "test:injection": "node --test tests/injection.test.js",
+    "test:hardening": "node --test tests/hardening.test.js"
   },
   "keywords": [],
   "author": "",
