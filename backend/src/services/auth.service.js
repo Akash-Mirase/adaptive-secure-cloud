@@ -45,7 +45,7 @@ export async function registerUser({ name, email, password, keyBundle }, { ipAdd
     // exist without key material, and vice versa.
     userId = await withTransaction(async (conn) => {
       const id = await users.createUser({ name, email, passwordHash }, conn);
-      await userKeys.createUserKeys(id, {
+            await userKeys.createUserKeys(id, {
         kdfIterations: keyBundle.kdfIterations,
         kdfSalt: keyBundle.kdfSalt,
         wrappedMasterKey: keyBundle.wrappedMasterKey,
@@ -53,6 +53,9 @@ export async function registerUser({ name, email, password, keyBundle }, { ipAdd
         recoveryWrappedMasterKey: keyBundle.recoveryWrappedMasterKey ?? null,
         recoveryIv: keyBundle.recoveryIv ?? null,
         recoveryKeyHash,
+        publicKey: keyBundle.publicKey,
+        wrappedPrivateKey: keyBundle.wrappedPrivateKey,
+        privateKeyIv: keyBundle.privateKeyIv,
       }, conn);
       return id;
     });
@@ -78,6 +81,10 @@ export async function getKeyBundleForUser(userId) {
     kdfSalt: k.kdfSalt,
     wrappedMasterKey: k.wrappedMasterKey,
     masterKeyIv: k.masterKeyIv,
+    // Needed so the browser can unwrap the sharing private key right after
+    // unwrapping the Master Key (see AuthContext.jsx's unlockWithPassword).
+    wrappedPrivateKey: k.wrappedPrivateKey,
+    privateKeyIv: k.privateKeyIv,
   };
 }
 

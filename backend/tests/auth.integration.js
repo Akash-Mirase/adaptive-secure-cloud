@@ -248,3 +248,19 @@ test('audit: register, failed login and login are all recorded', async () => {
     assert.ok(events.includes(expected), `missing ${expected}`)
   }
 })
+
+test('register: stores the public key in plaintext and the private key only as ciphertext', async () => {
+  const email = newEmail();
+  const publicKey = randomBytes(294).toString('base64');
+  const wrappedPrivateKey = randomBytes(1200).toString('base64');
+  const privateKeyIv = randomBytes(12).toString('base64');
+
+  await request(app).post('/api/auth/register').send({
+    name: 'Key Pair Tester', email, password: PASSWORD,
+    ...keyBundleFields(), publicKey, wrappedPrivateKey, privateKeyIv,
+  }).expect(201);
+
+  const [row] = await query('SELECT public_key, wrapped_private_key FROM user_keys WHERE user_id = (SELECT id FROM users WHERE email = ?)', [email]);
+  assert.equal(row.public_key, publicKey); // non-secret: stored verbatim
+  assert.equal(row.wrapped_private_key, wrappedPrivateKey); // ciphertext: also stored verbatim, never decoded/decrypted server-side
+});

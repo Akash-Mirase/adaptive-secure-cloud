@@ -7,6 +7,7 @@ import { formatBytes, formatDate } from '../utils/format.js'
 import RiskBreakdownModal from '../components/RiskBreakdownModal.jsx'
 import StepUpModal from '../components/StepUpModal.jsx'
 import { parseApiError, isStepUpRequired } from '../utils/apiError.js';
+import ShareModal from '../components/ShareModal.jsx';
 
 export default function Files () {
   const [files, setFiles] = useState([])
@@ -15,6 +16,7 @@ export default function Files () {
   const [busyId, setBusyId] = useState(null)
   const [detailsId, setDetailsId] = useState(null)
   const [stepUpFile, setStepUpFile] = useState(null)
+  const [shareFile, setShareFile] = useState(null);
 
   const load = async () => {
     setLoading(true)
@@ -158,12 +160,7 @@ export default function Files () {
                       Download
                     </button>
 
-                    <button
-                      className='btn btn-sm btn-outline-secondary me-1'
-                      disabled
-                    >
-                      Share
-                    </button>
+                    <button className="btn btn-sm btn-outline-secondary me-1" onClick={() => setShareFile(f)}>Share</button>
 
                     <button
                       className='btn btn-sm btn-outline-dark me-1'
@@ -201,6 +198,7 @@ export default function Files () {
           }}
         />
       )}
+      {shareFile && <ShareModal file={shareFile} onClose={() => setShareFile(null)} />}
     </>
   )
 }

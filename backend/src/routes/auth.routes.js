@@ -35,6 +35,9 @@ const registerRules = [
   base64('recoveryWrappedMasterKey', 'recoveryWrappedMasterKey'),
   base64('recoveryIv', 'recoveryIv').custom((v) => Buffer.from(v, 'base64').length === 12).withMessage('recoveryIv must decode to 12 bytes'),
   body('recoveryKey').isString().withMessage('recoveryKey must be text').bail().isLength({ min: 16, max: 128 }).withMessage('recoveryKey looks invalid'),
+  body('publicKey').isString().withMessage('publicKey must be text').bail().isBase64().withMessage('publicKey must be base64').bail().isLength({ max: 1000 }),
+  base64('wrappedPrivateKey', 'wrappedPrivateKey').bail().isLength({ max: 4000 }),
+  base64('privateKeyIv', 'privateKeyIv').custom((v) => Buffer.from(v, 'base64').length === 12).withMessage('privateKeyIv must decode to 12 bytes'),
 ];
 
 const loginRules = [

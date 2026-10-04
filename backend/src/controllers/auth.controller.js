@@ -13,7 +13,10 @@ export async function register(req, res) {
     masterKeyIv: req.body.masterKeyIv,
     recoveryWrappedMasterKey: req.body.recoveryWrappedMasterKey,
     recoveryIv: req.body.recoveryIv,
-    recoveryKey: req.body.recoveryKey, // used once, for hashing, never stored raw
+    recoveryKey: req.body.recoveryKey,
+    publicKey: req.body.publicKey,
+    wrappedPrivateKey: req.body.wrappedPrivateKey,
+    privateKeyIv: req.body.privateKeyIv,
   };
   const user = await authService.registerUser({ name, email, password, keyBundle }, { ipAddress: req.ip });
   return sendSuccess(res, { user }, 'Registration successful', 201);

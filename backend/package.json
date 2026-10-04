@@ -12,7 +12,8 @@
     "test:files": "node --test tests/files.integration.js",
     "test:storage": "node --test tests/storage.contract.test.js",
     "test:risk": "node --test tests/risk.test.js",
-    "test:policy": "node --test tests/policy.test.js"
+    "test:policy": "node --test tests/policy.test.js",
+    "test:sharing": "node --test tests/sharing.integration.js"
   },
   "keywords": [],
   "author": "",

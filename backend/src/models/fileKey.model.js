@@ -11,9 +11,13 @@ const toFileKey = (r) =>
   };
 
 // Stores a WRAPPED (encrypted) FEK. Plaintext FEKs never reach the server.
+// Upsert, not plain insert: re-sharing with an existing recipient (e.g. to
+// change their permission level) must replace their wrapped FEK, not fail on
+// the (file_id, user_id) unique constraint from Phase 4.
 export async function createFileKey({ fileId, userId, wrappedFek, wrapIv, wrapType }, executor) {
   await query(
-    'INSERT INTO file_keys (file_id, user_id, wrapped_fek, wrap_iv, wrap_type) VALUES (?, ?, ?, ?, ?)',
+    `INSERT INTO file_keys (file_id, user_id, wrapped_fek, wrap_iv, wrap_type) VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE wrapped_fek = VALUES(wrapped_fek), wrap_iv = VALUES(wrap_iv), wrap_type = VALUES(wrap_type)`,
     [fileId, userId, wrappedFek, wrapIv ?? null, wrapType],
     executor
   );

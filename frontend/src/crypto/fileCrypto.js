@@ -1,9 +1,8 @@
 import { generateFileKey, generateIV, encryptFile, decryptFile, exportKey, importKey, ivToBase64, ivFromBase64, wrapFek, unwrapFek, KEY_METADATA } from './aes.js';
 import { generateWrapIV } from './masterKey.js';
+import { wrapFekForRecipient, unwrapFekFromOwner } from './rsa.js';
 import { bufferToBase64, base64ToBuffer } from './encoding.js';
 
-// File -> ciphertext + a WRAPPED FEK (under the Master Key), ready to upload.
-// The raw FEK never leaves this function unwrapped.
 export async function encryptFileForUpload(file, masterKey) {
   const plaintextBuffer = await file.arrayBuffer();
   const fek = await generateFileKey();
@@ -25,13 +24,28 @@ export async function encryptFileForUpload(file, masterKey) {
   };
 }
 
-// Downloaded ciphertext + the wrapped FEK fetched from the server -> a Blob
-// of the original file. The FEK is unwrapped in-memory and discarded after use.
+// Owner's own download path (FEK wrapped under their Master Key).
 export async function decryptDownloadedFile(ciphertextArrayBuffer, ivBase64, wrappedFekBase64, wrapIvBase64, masterKey, mimeType) {
   const fek = await unwrapFek(base64ToBuffer(wrappedFekBase64), masterKey, new Uint8Array(base64ToBuffer(wrapIvBase64)));
   const iv = ivFromBase64(ivBase64);
   const plaintextBuffer = await decryptFile(ciphertextArrayBuffer, fek, iv);
   return new Blob([plaintextBuffer], { type: mimeType || 'application/octet-stream' });
+}
+
+// Recipient's download path (FEK wrapped under the recipient's own RSA public key).
+export async function decryptSharedDownloadedFile(ciphertextArrayBuffer, ivBase64, wrappedFekBase64, privateKey, mimeType) {
+  const fek = await unwrapFekFromOwner(wrappedFekBase64, privateKey);
+  const iv = ivFromBase64(ivBase64);
+  const plaintextBuffer = await decryptFile(ciphertextArrayBuffer, fek, iv);
+  return new Blob([plaintextBuffer], { type: mimeType || 'application/octet-stream' });
+}
+
+// Used only by the SHARING OWNER: unwraps their own copy of a file's FEK
+// (via their Master Key) and immediately re-wraps it under a recipient's
+// PUBLIC key. The raw FEK exists only transiently in this function's scope.
+export async function prepareFekForSharing(wrappedFekBase64, wrapIvBase64, masterKey, recipientPublicKey) {
+  const fek = await unwrapFek(base64ToBuffer(wrappedFekBase64), masterKey, new Uint8Array(base64ToBuffer(wrapIvBase64)));
+  return wrapFekForRecipient(fek, recipientPublicKey);
 }
 
 export { exportKey, importKey };
