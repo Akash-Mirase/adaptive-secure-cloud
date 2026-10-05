@@ -24,3 +24,5 @@ Thumbs.db
 # Local test artifacts
 tmp/
 *.local
+# Raw benchmark output (large, regenerable) — only the summarized report is committed.
+backend/benchmark-results/

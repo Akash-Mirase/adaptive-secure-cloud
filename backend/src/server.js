@@ -28,6 +28,13 @@ const server = app.listen(env.port, () => {
   console.log(`[server] Running in ${env.nodeEnv} mode on http://localhost:${env.port}`);
 });
 
+// Default Node keep-alive timeout (5s) can prematurely close a reused
+// connection between the benchmark script's back-to-back large transfers.
+// This is relevant for sustained load (like this benchmark); normal browser
+// usage is unaffected.
+server.keepAliveTimeout = 120000;
+server.headersTimeout = 125000; // must exceed keepAliveTimeout
+
 process.on('SIGINT', () => {
   clearInterval(purgeTimer);
   server.close(async () => {
