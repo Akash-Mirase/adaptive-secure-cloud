@@ -78,3 +78,13 @@ export async function findPublicKeyByEmail(email, executor) {
   if (!rows[0] || !rows[0].public_key) return null;
   return { id: rows[0].id, name: rows[0].name, email: rows[0].email, publicKey: rows[0].public_key };
 }
+
+export async function updateRecoveryMaterial(userId, { recoveryWrappedMasterKey, recoveryIv, recoveryKeyHash }, executor) {
+  await query(
+    `UPDATE user_keys
+        SET recovery_wrapped_master_key = ?, recovery_iv = ?, recovery_key_hash = ?
+      WHERE user_id = ?`,
+    [recoveryWrappedMasterKey, recoveryIv, recoveryKeyHash, userId],
+    executor
+  );
+}

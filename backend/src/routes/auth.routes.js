@@ -57,6 +57,14 @@ const recoverRules = [
   base64('masterKeyIv', 'masterKeyIv').custom((v) => Buffer.from(v, 'base64').length === 12).withMessage('masterKeyIv must decode to 12 bytes'),
 ];
 
+const regenerateRecoveryKeyRules = [
+  base64('recoveryWrappedMasterKey', 'recoveryWrappedMasterKey'),
+  base64('recoveryIv', 'recoveryIv').custom((v) => Buffer.from(v, 'base64').length === 12).withMessage('recoveryIv must decode to 12 bytes'),
+  body('recoveryKey').isString().withMessage('recoveryKey must be text').bail().isLength({ min: 16, max: 128 }).withMessage('recoveryKey looks invalid'),
+];
+
+router.post('/recovery-key', authenticate, regenerateRecoveryKeyRules, validate, asyncHandler(authController.regenerateRecoveryKey));
+
 router.post('/register', registerLimiter, registerRules, validate, asyncHandler(authController.register));
 router.post('/login', loginLimiter, loginRules, validate, asyncHandler(authController.login));
 router.get('/me', authenticate, asyncHandler(authController.me));

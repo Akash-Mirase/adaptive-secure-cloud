@@ -41,3 +41,7 @@ export async function requestStepUp(password) {
   const res = await api.post('/auth/step-up', { password });
   return res.data.data; // { stepUpToken, expiresAt }
 }
+
+export async function regenerateRecoveryKey(payload) {
+  await api.post('/auth/recovery-key', payload);
+}

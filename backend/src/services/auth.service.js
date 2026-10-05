@@ -266,3 +266,9 @@ export async function stepUpVerify({ userId, password }, { ipAddress } = {}) {
   await logEvent({ userId, eventType: 'STEP_UP_VERIFICATION', result: 'SUCCESS', ipAddress });
   return { stepUpToken: token, expiresAt: expiresAt.toISOString() };
 }
+
+export async function regenerateRecoveryKey({ userId, recoveryWrappedMasterKey, recoveryIv, recoveryKey }, { ipAddress } = {}) {
+  const recoveryKeyHash = await bcrypt.hash(recoveryKey, env.bcryptRounds);
+  await userKeys.updateRecoveryMaterial(userId, { recoveryWrappedMasterKey, recoveryIv, recoveryKeyHash });
+  await logEvent({ userId, eventType: 'KEY_OPERATION', result: 'SUCCESS', ipAddress, details: { action: 'RECOVERY_KEY_REGENERATED' } });
+}

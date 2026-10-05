@@ -32,9 +32,6 @@ export default function AppLayout () {
           <div className='d-flex align-items-center gap-3'>
             <span className='text-light small d-none d-sm-inline'>
               {user?.name}
-            </span>
-            <span className='text-light small d-none d-sm-inline'>
-              {user?.name}
               {user?.role === 'ADMIN' && (
                 <span className='badge text-bg-warning ms-1'>ADMIN</span>
               )}

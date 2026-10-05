@@ -64,3 +64,12 @@ export async function stepUp(req, res) {
   const result = await authService.stepUpVerify({ userId: req.user.id, password }, { ipAddress: req.ip });
   return sendSuccess(res, result, 'Step-up verification successful');
 }
+
+export async function regenerateRecoveryKey(req, res) {
+  const { recoveryWrappedMasterKey, recoveryIv, recoveryKey } = req.body;
+  await authService.regenerateRecoveryKey(
+    { userId: req.user.id, recoveryWrappedMasterKey, recoveryIv, recoveryKey },
+    { ipAddress: req.ip }
+  );
+  return sendSuccess(res, null, 'Recovery key regenerated');
+}
