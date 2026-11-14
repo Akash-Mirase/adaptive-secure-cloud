@@ -7,7 +7,6 @@
     "test": "node --test",
     "dev": "nodemon src/server.js",
     "start": "node src/server.js\n\n",
-    "test:db": "node --test tests/app.test.js",
     "test:auth": "node --test tests/auth.integration.js",
     "test:files": "node --test tests/files.integration.js",
     "test:storage": "node --test tests/storage.contract.test.js",
@@ -18,7 +17,10 @@
     "test:threats": "node --test tests/threatModel.integration.js",
     "test:injection": "node --test tests/injection.test.js",
     "test:hardening": "node --test tests/hardening.test.js",
-    "test:mfa": "node --test tests/mfa.integration.js"
+    "test:mfa": "node --test tests/mfa.integration.js",
+    "test:keyversion": "node --test tests/keyversion.integration.js",
+    "test:anomaly": "node --test tests/anomaly.integration.js",
+    "test:db": "node --test tests/db.integration.js"
   },
   "keywords": [],
   "author": "",

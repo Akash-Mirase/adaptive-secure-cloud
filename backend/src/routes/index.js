@@ -5,6 +5,7 @@ import filesRoutes from './files.routes.js';
 import usersRoutes from './users.routes.js';
 import auditRoutes from './audit.routes.js';
 import mfaRoutes from './mfa.routes.js';
+import alertsRoutes from './alerts.routes.js'; 
 
 
 
@@ -18,5 +19,6 @@ router.use('/users', usersRoutes);
 
 router.use('/audit', auditRoutes);
 router.use('/mfa', mfaRoutes);
+router.use('/alerts', alertsRoutes);
 
 export default router;

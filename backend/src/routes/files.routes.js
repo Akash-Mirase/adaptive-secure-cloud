@@ -7,6 +7,7 @@ import { enforceRiskPolicy } from '../middleware/riskPolicy.js';
 import { validate } from '../middleware/validate.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import * as filesController from '../controllers/files.controller.js';
+import { blockIfThrottled } from '../middleware/throttle.js'
 
 const router = Router();
 router.use(authenticate);
@@ -45,7 +46,7 @@ router.get('/', asyncHandler(filesController.listFiles));
 
 router.get('/:id', fileIdParamRules, validate, loadFileForAccess, asyncHandler(filesController.getFile));
 router.get('/:id/risk', fileIdParamRules, validate, loadFileForAccess, asyncHandler(filesController.getRiskBreakdown));
-router.get('/:id/download', fileIdParamRules, validate, loadFileForAccess, requireAccessLevel('DOWNLOAD'), enforceRiskPolicy, asyncHandler(filesController.downloadFile));
+router.get('/:id/download', fileIdParamRules, validate, loadFileForAccess, requireAccessLevel('DOWNLOAD'), blockIfThrottled, enforceRiskPolicy, asyncHandler(filesController.downloadFile));
 router.get('/:id/key', fileIdParamRules, validate, loadFileForAccess, requireAccessLevel('DOWNLOAD'), enforceRiskPolicy, asyncHandler(filesController.getFileKey));
 
 router.delete('/:id', fileIdParamRules, validate, loadFileOwned, asyncHandler(filesController.deleteFile));

@@ -1,4 +1,7 @@
 import * as auditLogs from '../models/auditLog.model.js';
+import { evaluateUser } from './anomaly.service.js';
+
+const WATCHED = new Set(['LOGIN_FAILED', 'ACCESS_DENIED', 'DOWNLOAD', 'SHARE']);
 
 // Writes one audit event.
 // DESIGN CHOICE: if the log write fails we report it on the console and let the
@@ -10,6 +13,9 @@ export async function logEvent({ userId, eventType, fileId, result, ipAddress, d
     await auditLogs.createLog({ userId, eventType, fileId, result, ipAddress, details });
   } catch (err) {
     console.error('[audit] failed to write log:', err.code || err.message);
+  }
+  if (userId && WATCHED.has(eventType)) {
+    evaluateUser(userId).catch((err) => console.error('[anomaly] evaluation failed:', err.code || err.message));
   }
 }
 

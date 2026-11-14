@@ -3,6 +3,7 @@ import AppError from '../utils/AppError.js';
 import { getPolicy } from '../config/securityPolicies.js';
 import { verifyStepUpToken } from '../services/auth.service.js';
 import { logEvent } from '../services/audit.service.js';
+import { hasRestriction } from '../services/anomaly.service.js';
 
 // Applied AFTER authenticate (needs req.user) and loadFile (needs
 // req.targetFile). This is the literal "adaptive" mechanism: the SAME route
@@ -11,9 +12,13 @@ import { logEvent } from '../services/audit.service.js';
 // riskLevel — not a fixed, blanket rule applied to all files alike.
 export const enforceRiskPolicy = asyncHandler(async (req, res, next) => {
   const file = req.targetFile;
-  const policy = getPolicy(file.riskLevel);
+  const base = getPolicy(file.riskLevel);
+  const restricted = await hasRestriction(req.user.id, 'REQUIRE_STEP_UP');
+  const policy = restricted && !base.requiresStepUp
+    ? { ...base, requiresStepUp: true, stepUpValiditySeconds: 600 }
+    : base;
   req.policy = policy;
-
+  
   // LOW / MEDIUM: nothing extra to check or log here — see
   // securityPolicies.js for why that is a deliberate choice, not an omission.
   if (!policy.requiresStepUp) return next();

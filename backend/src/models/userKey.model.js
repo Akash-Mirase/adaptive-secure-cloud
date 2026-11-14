@@ -88,3 +88,17 @@ export async function updateRecoveryMaterial(userId, { recoveryWrappedMasterKey,
     executor
   );
 }
+// Optimistic rotation: succeeds only if key_version is still what the client started from.
+// Returns false on a stale version (concurrent rotation), so the caller can answer 409.
+export async function rotateMasterKey(userId, expectedVersion, k, ex) {
+  const r = await query(
+    `UPDATE user_keys
+        SET wrapped_master_key = ?, master_key_iv = ?,
+            recovery_wrapped_master_key = ?, recovery_iv = ?, recovery_key_hash = ?,
+            wrapped_private_key = ?, private_key_iv = ?,
+            key_version = key_version + 1
+      WHERE user_id = ? AND key_version = ?`,
+    [k.wrappedMasterKey, k.masterKeyIv, k.recoveryWrappedMasterKey, k.recoveryIv, k.recoveryKeyHash,
+     k.wrappedPrivateKey, k.privateKeyIv, userId, expectedVersion], ex);
+  return r.affectedRows === 1;
+}
