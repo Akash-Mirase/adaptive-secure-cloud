@@ -20,3 +20,5 @@ export const registerLimiter = createAuthLimiter();
 // Recovery is powerful (it resets the password), so it gets the tightest limit.
 export const recoveryLimiter = createAuthLimiter({ limit: env.nodeEnv === 'test' ? 1000 : 5, skipSuccessfulRequests: false });
 export const stepUpLimiter = createAuthLimiter({ limit: env.nodeEnv === 'test' ? 1000 : 10, skipSuccessfulRequests: true });
+// Only failed attempts count. The per-account lock in mfa.service.js is the second layer.
+export const mfaLimiter = createAuthLimiter({ limit: env.nodeEnv === 'test' ? 1000 : 10, skipSuccessfulRequests: true });

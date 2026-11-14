@@ -47,6 +47,9 @@ export const enforceRiskPolicy = asyncHandler(async (req, res, next) => {
     });
     throw new AppError('Step-up verification required for this file', 428);
   }
+    if (req.user.tokensValidAfter && claims.iat * 1000 < new Date(req.user.tokensValidAfter).getTime()) {
+    throw new AppError('Step-up verification required for this file', 428);
+  }
 
   // Freshness is checked against THIS FILE's policy window (via its
   // riskLevel), not the token's own longer outer expiry — this is what lets

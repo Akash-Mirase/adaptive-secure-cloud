@@ -37,11 +37,24 @@ export async function getRecoveryBundle(email) {
 export async function recoverAccount(payload) {
   await api.post('/auth/recover', payload);
 }
-export async function requestStepUp(password) {
-  const res = await api.post('/auth/step-up', { password });
-  return res.data.data; // { stepUpToken, expiresAt }
-}
 
 export async function regenerateRecoveryKey(payload) {
   await api.post('/auth/recovery-key', payload);
 }
+
+export async function completeMfaLogin(mfaToken, secondFactor) {
+  const res = await api.post('/auth/login/mfa', { mfaToken, ...secondFactor });
+  return res.data.data; // { user, token, expiresAt }
+}
+export async function requestStepUp(password, extra = {}) { // replaces the existing requestStepUp
+  const res = await api.post('/auth/step-up', { password, ...extra });
+  return res.data.data;
+}
+export async function logoutAll() {
+  await api.post('/auth/logout-all');
+}
+export const getMfaStatus = async () => (await api.get('/mfa/status')).data.data;
+export const beginMfaEnrollment = async (password) => (await api.post('/mfa/enroll', { password })).data.data;
+export const confirmMfaEnrollment = async (code) => (await api.post('/mfa/enroll/confirm', { code })).data.data;
+export const disableMfa = async (payload) => { await api.post('/mfa/disable', payload); };
+export const regenerateMfaCodes = async (payload) => (await api.post('/mfa/recovery-codes', payload)).data.data;

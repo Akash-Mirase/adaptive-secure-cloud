@@ -75,16 +75,22 @@ export function AuthProvider ({ children }) {
     setCryptoStatus('unlocked')
   }, [])
 
-  const login = useCallback(
-    async (email, password) => {
-      const result = await authService.login(email, password)
-      setToken(result.token)
-      setUser(result.user)
-      await unlockWithPassword(password) // we already have the password in hand; unlock immediately
-      return result.user
-    },
-    [unlockWithPassword]
-  )
+    const login = useCallback(async (email, password) => {
+    const result = await authService.login(email, password);
+    if (result.mfaRequired) return { mfaRequired: true, mfaToken: result.mfaToken };
+    setToken(result.token);
+    setUser(result.user);
+    await unlockWithPassword(password);
+    return { user: result.user };
+  }, [unlockWithPassword]);
+
+  const completeMfaLogin = useCallback(async (mfaToken, secondFactor, password) => {
+    const result = await authService.completeMfaLogin(mfaToken, secondFactor);
+    setToken(result.token);
+    setUser(result.user);
+    await unlockWithPassword(password); // password still in memory from step 1; never stored
+    return { user: result.user };
+  }, [unlockWithPassword]);
 
   const register = useCallback(data => authService.register(data), [])
 

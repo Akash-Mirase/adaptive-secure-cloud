@@ -17,7 +17,8 @@
     "test:audit": "node --test tests/audit.integration.js",
     "test:threats": "node --test tests/threatModel.integration.js",
     "test:injection": "node --test tests/injection.test.js",
-    "test:hardening": "node --test tests/hardening.test.js"
+    "test:hardening": "node --test tests/hardening.test.js",
+    "test:mfa": "node --test tests/mfa.integration.js"
   },
   "keywords": [],
   "author": "",
@@ -37,6 +38,8 @@
     "multer": "^2.4.0",
     "mysql2": "^3.24.4",
     "node-gyp": "^12.4.0",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.4",
     "rebuild": "^0.1.2"
   },
   "devDependencies": {

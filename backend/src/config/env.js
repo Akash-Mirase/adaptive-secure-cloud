@@ -16,6 +16,7 @@ export const env = {
     .map(origin => origin.trim()),
 
   bcryptRounds: nodeEnv === 'test' ? 4 : 12,
+  mfaEncryptionKey: process.env.MFA_ENCRYPTION_KEY,
 
   jwt: {
     secret: process.env.JWT_SECRET,
@@ -45,6 +46,9 @@ export function assertProductionConfig () {
   const problems = []
   if (!env.jwt.secret || env.jwt.secret.length < 32) {
     problems.push('JWT_SECRET must be set and at least 32 characters')
+  }
+    if (!/^[0-9a-fA-F]{64}$/.test(env.mfaEncryptionKey || '')) {
+    problems.push('MFA_ENCRYPTION_KEY must be set to 64 hex characters (32 bytes)')
   }
   if (env.nodeEnv !== 'test') {
     if (

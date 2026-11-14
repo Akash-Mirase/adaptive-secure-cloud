@@ -1,6 +1,6 @@
 import { test, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, randomBytes } from 'node:crypto'
 import express from 'express'
 import request from 'supertest'
 
@@ -10,6 +10,7 @@ const { default: app } = await import('../src/app.js')
 const { query, closePool } = await import('../src/config/env.js')
 const { authenticate, requireRole } = await import('../src/middleware/auth.js')
 const { errorHandler } = await import('../src/middleware/errorHandler.js')
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const PASSWORD = 'correct horse battery staple'
 const TEST_KEY_BUNDLE = {
@@ -27,17 +28,27 @@ after(async () => {
   await query("DELETE FROM users WHERE email LIKE 'authtest-%@example.com'")
   await closePool()
 })
+const b64 = n => randomBytes(n).toString('base64')
+
+// The full key bundle /auth/register has required since Phases 8 and 12.
+const fullKeyBundle = () => ({
+  kdfSalt: b64(16),
+  kdfIterations: 250000,
+  wrappedMasterKey: b64(48),
+  masterKeyIv: b64(12),
+  recoveryWrappedMasterKey: b64(48),
+  recoveryIv: b64(12),
+  recoveryKey: 'AAAA-BBBB-CCCC-DDDD-EEEE',
+  publicKey: b64(294),
+  wrappedPrivateKey: b64(1200),
+  privateKeyIv: b64(12)
+})
 
 async function registerAndLogin () {
   const email = newEmail()
   await request(app)
     .post('/api/auth/register')
-    .send({
-      name: 'Test User',
-      email,
-      password: PASSWORD,
-      ...TEST_KEY_BUNDLE
-    })
+    .send({ name: 'Test User', email, password: PASSWORD, ...fullKeyBundle() })
     .expect(201)
   const res = await request(app)
     .post('/api/auth/login')
@@ -57,7 +68,7 @@ test('register: creates the user, normalizes email, ignores injected role, leaks
       email: email.toUpperCase(),
       password: PASSWORD,
       role: 'ADMIN',
-      ...TEST_KEY_BUNDLE
+      ...fullKeyBundle()
     })
   assert.equal(res.status, 201)
   assert.equal(res.body.data.user.email, email)
@@ -85,18 +96,13 @@ test('register: duplicate email returns 409', async () => {
     name: 'Dup',
     email,
     password: PASSWORD,
-    ...TEST_KEY_BUNDLE
+    ...fullKeyBundle()
   }
-  await request(app)
-    .post('/api/auth/register')
-    .send({
-      name: 'Audit',
-      email,
-      password: PASSWORD,
-      ...TEST_KEY_BUNDLE
-    })
-    .expect(201)
+
+  await request(app).post('/api/auth/register').send(body).expect(201)
+
   const res = await request(app).post('/api/auth/register').send(body)
+
   assert.equal(res.status, 409)
 })
 
@@ -228,7 +234,7 @@ test('audit: register, failed login and login are all recorded', async () => {
       name: 'Audit',
       email,
       password: PASSWORD,
-      ...TEST_KEY_BUNDLE
+      ...fullKeyBundle()
     })
     .expect(201)
   await request(app)
@@ -250,17 +256,61 @@ test('audit: register, failed login and login are all recorded', async () => {
 })
 
 test('register: stores the public key in plaintext and the private key only as ciphertext', async () => {
+  const email = newEmail()
+  const publicKey = randomBytes(294).toString('base64')
+  const wrappedPrivateKey = randomBytes(1200).toString('base64')
+  const privateKeyIv = randomBytes(12).toString('base64')
+
+  await request(app)
+    .post('/api/auth/register')
+    .send({
+      name: 'Key Pair Tester',
+      email,
+      password: PASSWORD,
+      ...fullKeyBundle(),
+      publicKey,
+      wrappedPrivateKey,
+      privateKeyIv
+    })
+    .expect(201)
+
+  const [row] = await query(
+    'SELECT public_key, wrapped_private_key FROM user_keys WHERE user_id = (SELECT id FROM users WHERE email = ?)',
+    [email]
+  )
+  assert.equal(row.public_key, publicKey) // non-secret: stored verbatim
+  assert.equal(row.wrapped_private_key, wrappedPrivateKey) // ciphertext: also stored verbatim, never decoded/decrypted server-side
+})
+
+test('logout-all: every previously issued token dies, a new login works', async () => {
+  const { email, token: tokenA } = await registerAndLogin();
+  const tokenB = (await request(app).post('/api/auth/login').send({ email, password: PASSWORD }).expect(200)).body.data.token;
+
+  await request(app).get('/api/auth/me').set(bearer(tokenA)).expect(200);
+  await request(app).get('/api/auth/me').set(bearer(tokenB)).expect(200);
+
+  await sleep(1100); // JWT iat has 1-second resolution
+  await request(app).post('/api/auth/logout-all').set(bearer(tokenA)).expect(200);
+
+  assert.equal((await request(app).get('/api/auth/me').set(bearer(tokenA))).status, 401);
+  assert.equal((await request(app).get('/api/auth/me').set(bearer(tokenB))).status, 401);
+
+  const fresh = await request(app).post('/api/auth/login').send({ email, password: PASSWORD }).expect(200);
+  await request(app).get('/api/auth/me').set(bearer(fresh.body.data.token)).expect(200);
+});
+
+test('recovery revokes tokens issued before it', async () => {
   const email = newEmail();
-  const publicKey = randomBytes(294).toString('base64');
-  const wrappedPrivateKey = randomBytes(1200).toString('base64');
-  const privateKeyIv = randomBytes(12).toString('base64');
+  const bundle = fullKeyBundle();
+  await request(app).post('/api/auth/register').send({ name: 'Recovery Tester', email, password: PASSWORD, ...bundle }).expect(201);
+  const oldToken = (await request(app).post('/api/auth/login').send({ email, password: PASSWORD }).expect(200)).body.data.token;
 
-  await request(app).post('/api/auth/register').send({
-    name: 'Key Pair Tester', email, password: PASSWORD,
-    ...keyBundleFields(), publicKey, wrappedPrivateKey, privateKeyIv,
-  }).expect(201);
+  await sleep(1100);
+  await request(app).post('/api/auth/recover').send({
+    email, recoveryKey: bundle.recoveryKey, newPassword: 'a brand new password here',
+    kdfSalt: bundle.kdfSalt, kdfIterations: bundle.kdfIterations,
+    wrappedMasterKey: bundle.wrappedMasterKey, masterKeyIv: bundle.masterKeyIv,
+  }).expect(200);
 
-  const [row] = await query('SELECT public_key, wrapped_private_key FROM user_keys WHERE user_id = (SELECT id FROM users WHERE email = ?)', [email]);
-  assert.equal(row.public_key, publicKey); // non-secret: stored verbatim
-  assert.equal(row.wrapped_private_key, wrappedPrivateKey); // ciphertext: also stored verbatim, never decoded/decrypted server-side
+  assert.equal((await request(app).get('/api/auth/me').set(bearer(oldToken))).status, 401);
 });

@@ -8,6 +8,7 @@ import * as revokedTokens from '../models/revokedToken.model.js';
 import { logEvent } from './audit.service.js';
 import * as userKeys from '../models/userKey.model.js';
 import { withTransaction } from '../config/env.js';
+import * as mfaService from './mfa.service.js';
 
 const JWT_ISSUER = 'adaptive-secure-cloud';
 const MAX_FAILED_ATTEMPTS = 5;
@@ -123,8 +124,9 @@ export async function recoverAccount({ email, recoveryKey, newPassword, keyBundl
 
   const newPasswordHash = await bcrypt.hash(newPassword, env.bcryptRounds);
 
-  await withTransaction(async (conn) => {
+    await withTransaction(async (conn) => {
     await users.updatePasswordHash(user.id, newPasswordHash, conn);
+    await users.setTokensValidAfter(user.id, revocationCutoff(), conn);   // <-- new
     await userKeys.rewrapAfterRecovery(user.id, keyBundle, conn);
   });
 
@@ -168,7 +170,10 @@ export async function loginUser({ email, password }, { ipAddress } = {}) {
   }
 
   if (record.failedLoginCount > 0) await users.resetFailedLogins(record.id);
-
+  // Password is correct. If MFA is on, withhold the session until the second factor is proven.
+  if (await mfaService.isEnabled(record.id)) {
+    return { mfaRequired: true, mfaToken: issueMfaPendingToken(record.id) };
+  }
   const { token, expiresAt } = issueAccessToken(record.id);
   await logEvent({ userId: record.id, eventType: 'LOGIN', result: 'SUCCESS', ipAddress });
 
@@ -253,13 +258,19 @@ export function verifyStepUpToken(token) {
 // is already known from the JWT; this only proves "you still know the
 // password right now"). It is intentionally the same factor as login — see
 // the Phase 11 scope note on why this is not full MFA.
-export async function stepUpVerify({ userId, password }, { ipAddress } = {}) {
+export async function stepUpVerify(
+  { userId, password, mfaCode, recoveryCode },
+  { ipAddress } = {}
+) {
   const record = await users.findAuthRecordById(userId);
   const passwordOk = record && (await bcrypt.compare(password, record.passwordHash));
 
   if (!record || !passwordOk) {
     await logEvent({ userId, eventType: 'STEP_UP_VERIFICATION', result: 'FAILURE', ipAddress });
     throw new AppError('Incorrect password', 401);
+  }
+  if (await mfaService.isEnabled(userId)) {
+    await mfaService.verifySecondFactor(userId, { code: mfaCode, recoveryCode }, { ipAddress });
   }
 
   const { token, expiresAt } = issueStepUpToken(userId);
@@ -271,4 +282,36 @@ export async function regenerateRecoveryKey({ userId, recoveryWrappedMasterKey, 
   const recoveryKeyHash = await bcrypt.hash(recoveryKey, env.bcryptRounds);
   await userKeys.updateRecoveryMaterial(userId, { recoveryWrappedMasterKey, recoveryIv, recoveryKeyHash });
   await logEvent({ userId, eventType: 'KEY_OPERATION', result: 'SUCCESS', ipAddress, details: { action: 'RECOVERY_KEY_REGENERATED' } });
+}
+function issueMfaPendingToken(userId) {
+  return jwt.sign({ purpose: 'mfa-pending' }, env.jwt.secret, {
+    algorithm: 'HS256', expiresIn: 300, subject: String(userId), jwtid: randomUUID(), issuer: JWT_ISSUER,
+  });
+}
+
+// authenticate() only accepts purpose === 'access', so this token can never act as a session.
+export async function completeMfaLogin({ mfaToken, code, recoveryCode }, { ipAddress } = {}) {
+  let claims;
+  try {
+    claims = jwt.verify(mfaToken, env.jwt.secret, { algorithms: ['HS256'], issuer: JWT_ISSUER });
+  } catch { throw new AppError('Invalid or expired token', 401); }
+  if (claims.purpose !== 'mfa-pending') throw new AppError('Invalid or expired token', 401);
+
+  const userId = Number.parseInt(claims.sub, 10);
+  const user = await users.findById(userId);
+  if (!user) throw new AppError('Invalid or expired token', 401);
+
+  const method = await mfaService.verifySecondFactor(userId, { code, recoveryCode }, { ipAddress });
+  const { token, expiresAt } = issueAccessToken(userId);
+  await logEvent({ userId, eventType: 'LOGIN', result: 'SUCCESS', ipAddress, details: { mfa: method } });
+  return { user: toPublicUser(user), token, expiresAt: expiresAt.toISOString() };
+}
+// JWT `iat` has one-SECOND resolution. Truncating "now" to the second means a token
+// issued in the same second as the revocation (e.g. the user's very next login)
+// is NOT rejected: only tokens from strictly earlier seconds are.
+const revocationCutoff = () => new Date(Math.floor(Date.now() / 1000) * 1000);
+
+export async function logoutEverywhere(userId, { ipAddress } = {}) {
+  await users.setTokensValidAfter(userId, revocationCutoff());
+  await logEvent({ userId, eventType: 'LOGOUT', result: 'SUCCESS', ipAddress, details: { scope: 'ALL_SESSIONS' } });
 }

@@ -60,11 +60,16 @@ export async function logout(req, res) {
 }
 
 export async function stepUp(req, res) {
-  const { password } = req.body;
-  const result = await authService.stepUpVerify({ userId: req.user.id, password }, { ipAddress: req.ip });
+  const { password, mfaCode, recoveryCode } = req.body;
+  const result = await authService.stepUpVerify({ userId: req.user.id, password, mfaCode, recoveryCode }, { ipAddress: req.ip });
   return sendSuccess(res, result, 'Step-up verification successful');
 }
 
+export async function loginMfa(req, res) {
+  const { mfaToken, code, recoveryCode } = req.body;
+  const result = await authService.completeMfaLogin({ mfaToken, code, recoveryCode }, { ipAddress: req.ip });
+  return sendSuccess(res, result, 'Login successful');
+}
 export async function regenerateRecoveryKey(req, res) {
   const { recoveryWrappedMasterKey, recoveryIv, recoveryKey } = req.body;
   await authService.regenerateRecoveryKey(
@@ -72,4 +77,9 @@ export async function regenerateRecoveryKey(req, res) {
     { ipAddress: req.ip }
   );
   return sendSuccess(res, null, 'Recovery key regenerated');
+}
+
+export async function logoutAll(req, res) {
+  await authService.logoutEverywhere(req.user.id, { ipAddress: req.ip });
+  return sendSuccess(res, null, 'All sessions signed out');
 }

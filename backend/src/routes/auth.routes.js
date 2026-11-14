@@ -4,7 +4,7 @@ import * as authController from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import asyncHandler from '../utils/asyncHandler.js';
-import { loginLimiter, registerLimiter, recoveryLimiter, stepUpLimiter } from '../middleware/rateLimiters.js';
+import { loginLimiter, registerLimiter, recoveryLimiter, stepUpLimiter ,mfaLimiter } from '../middleware/rateLimiters.js';
 
 const router = Router();
 
@@ -19,6 +19,8 @@ const passwordRules = (field) =>
 
 const stepUpRules = [
   body('password').isString().withMessage('password must be text').bail().isLength({ min: 1, max: 256 }).withMessage('password is required'),
+  body('mfaCode').optional().matches(/^\d{6}$/).withMessage('mfaCode must be 6 digits'),
+  body('recoveryCode').optional().isString().isLength({ min: 10, max: 40 }),
 ];
 
 const registerRules = [
@@ -45,6 +47,13 @@ const loginRules = [
   body('password').isString().withMessage('password must be text').bail().isLength({ min: 1, max: 256 }).withMessage('password is required'),
 ];
 
+const loginMfaRules = [
+  body('mfaToken').isString().withMessage('mfaToken is required').bail().isLength({ max: 2000 }),
+  body('code').optional().matches(/^\d{6}$/).withMessage('code must be 6 digits'),
+  body('recoveryCode').optional().isString().isLength({ min: 10, max: 40 }),
+];
+
+
 const recoveryBundleRules = [queryParam('email').isString().bail().trim().toLowerCase().isEmail().withMessage('email is not valid')];
 
 const recoverRules = [
@@ -69,9 +78,11 @@ router.post('/register', registerLimiter, registerRules, validate, asyncHandler(
 router.post('/login', loginLimiter, loginRules, validate, asyncHandler(authController.login));
 router.get('/me', authenticate, asyncHandler(authController.me));
 router.post('/logout', authenticate, asyncHandler(authController.logout));
+router.post('/logout-all', authenticate, asyncHandler(authController.logoutAll));
 
 router.get('/keys', authenticate, asyncHandler(authController.getKeys));
 router.get('/recovery-bundle', recoveryLimiter, recoveryBundleRules, validate, asyncHandler(authController.getRecoveryBundle));
 router.post('/recover', recoveryLimiter, recoverRules, validate, asyncHandler(authController.recover));
 router.post('/step-up', stepUpLimiter, authenticate, stepUpRules, validate, asyncHandler(authController.stepUp));
+router.post('/login/mfa', mfaLimiter, loginMfaRules, validate, asyncHandler(authController.loginMfa));
 export default router;

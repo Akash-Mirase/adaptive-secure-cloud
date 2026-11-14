@@ -4,6 +4,8 @@ import authRoutes from './auth.routes.js';
 import filesRoutes from './files.routes.js';
 import usersRoutes from './users.routes.js';
 import auditRoutes from './audit.routes.js';
+import mfaRoutes from './mfa.routes.js';
+
 
 
 // Every feature router is mounted here so app.js never changes again.
@@ -15,5 +17,6 @@ router.use('/files', filesRoutes);
 router.use('/users', usersRoutes);
 
 router.use('/audit', auditRoutes);
+router.use('/mfa', mfaRoutes);
 
 export default router;

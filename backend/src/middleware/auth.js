@@ -38,7 +38,15 @@ export const authenticate = asyncHandler(async (req, res, next) => {
   // Re-load the user on every request: deleted accounts and changed roles apply at once.
   const user = await users.findById(userId)
   if (!user) throw new AppError('Invalid or expired token', 401)
-
+      // "Log out everywhere" / post-recovery revocation: any token issued before the
+  // user's cutoff is dead even though its signature and expiry are still valid.
+  if (user.tokensValidAfter && claims.iat * 1000 < new Date(user.tokensValidAfter).getTime()) {
+    await logEvent({
+      userId, eventType: 'ACCESS_DENIED', result: 'DENIED', ipAddress: req.ip,
+      details: { reason: 'TOKEN_ISSUED_BEFORE_REVOCATION' },
+    });
+    throw new AppError('Invalid or expired token', 401);
+  }
   req.user = user
   req.auth = { jti: claims.jti, exp: claims.exp }
   next()

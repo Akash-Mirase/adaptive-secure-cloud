@@ -11,6 +11,7 @@ const toUser = (r) =>
     failedLoginCount: r.failed_login_count,
     lockedUntil: r.locked_until,
     createdAt: r.created_at,
+    tokensValidAfter: r.tokens_valid_after,
   };
 
 export async function createUser({ name, email, passwordHash }, executor) {
@@ -71,4 +72,8 @@ export async function findAuthRecordById(id, executor) {
   const rows = await query('SELECT * FROM users WHERE id = ?', [id], executor);
   if (!rows[0]) return null;
   return { ...toUser(rows[0]), passwordHash: rows[0].password_hash };
+}
+
+export async function setTokensValidAfter(id, date, executor) {
+  await query('UPDATE users SET tokens_valid_after = ? WHERE id = ?', [date, id], executor);
 }

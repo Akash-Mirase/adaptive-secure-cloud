@@ -19,8 +19,8 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const url = error.config?.url || '';
-    const isAuthAttempt = url.startsWith('/auth/login') || url.startsWith('/auth/register');
-    if (error.response?.status === 401 && !isAuthAttempt) {
+    const isAuthAttempt = ['/auth/login', '/auth/register', '/auth/step-up', '/mfa/'].some((p) => url.startsWith(p));
+      if (error.response?.status === 401 && !isAuthAttempt) {
       clearToken();
       window.dispatchEvent(new Event('auth:expired'));
     }
