@@ -8,6 +8,7 @@ import { validate } from '../middleware/validate.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import * as filesController from '../controllers/files.controller.js';
 import { blockIfThrottled } from '../middleware/throttle.js'
+import { MAX_USER_SENSITIVITY } from '../config/riskRules.js';
 
 const router = Router();
 router.use(authenticate);
@@ -28,7 +29,7 @@ const uploadRules = [
   body('originalSize').isInt({ min: 0 }).bail().toInt(),
   base64('wrappedFek', 'wrappedFek'),
   body('wrapIv').isString().bail().isBase64().bail().custom((v) => Buffer.from(v, 'base64').length === 12).withMessage('wrapIv must decode to exactly 12 bytes'),
-  body('userSensitivity').optional().isInt({ min: 0, max: 3 }).toInt(),
+  body('userSensitivity').optional().isInt({ min: 0, max: MAX_USER_SENSITIVITY }).toInt(),
 ];
 
 const shareRules = [

@@ -3,6 +3,7 @@ import { encryptFileForUpload, decryptDownloadedFile, decryptSharedDownloadedFil
 import { importPublicKey } from '../crypto/rsa.js';
 import { getMasterKey, getPrivateKey } from '../crypto/masterKeySession.js';
 import { lookupUser } from './usersService.js';
+import { inspectFile } from '../inspection/inspectFile.js';
 
 function requireMasterKey() {
   const key = getMasterKey();
@@ -10,13 +11,29 @@ function requireMasterKey() {
   return key;
 }
 
-export async function uploadFile(file, { onProgress, onStageChange, userSensitivity = 0 } = {}) {
+
+export async function uploadFile(
+  file,
+  { onProgress, onStageChange, userSensitivity = 0 } = {}
+) {
+  // 1. Check that the user's master key is unlocked
   const masterKey = requireMasterKey();
+
+  // 2. Inspect file locally BEFORE encryption
+  onStageChange?.('inspecting');
+
+  const contentEvidence = await inspectFile(file);
+
+  // 3. Encrypt the original file using existing AES encryption
   onStageChange?.('encrypting');
+
   const enc = await encryptFileForUpload(file, masterKey);
+
+  // 4. Prepare multipart upload
   onStageChange?.('uploading');
 
   const formData = new FormData();
+
   formData.append('file', enc.ciphertextBlob, enc.originalName);
   formData.append('iv', enc.ivBase64);
   formData.append('keyMetadata', JSON.stringify(enc.keyMetadata));
@@ -26,12 +43,27 @@ export async function uploadFile(file, { onProgress, onStageChange, userSensitiv
   formData.append('wrapIv', enc.wrapIvBase64);
   formData.append('userSensitivity', String(userSensitivity));
 
+  // Send only safe indicators, never extracted plaintext
+  formData.append(
+    'contentEvidence',
+    JSON.stringify(contentEvidence)
+  );
+
+  // 5. Upload encrypted file and safe evidence
   const res = await api.post('/files', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    onUploadProgress: (evt) => { if (evt.total) onProgress?.(Math.round((evt.loaded / evt.total) * 100)); },
+    onUploadProgress: (evt) => {
+      if (evt.total) {
+        onProgress?.(
+          Math.round((evt.loaded / evt.total) * 100)
+        );
+      }
+    },
   });
+
   return res.data.data.file;
 }
+
 
 export async function listFiles() {
   const res = await api.get('/files');

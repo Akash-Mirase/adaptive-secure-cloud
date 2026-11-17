@@ -6,6 +6,7 @@ import * as fileService from '../services/fileService.js';
 import * as auditService from '../services/auditService.js';
 import { formatDate } from '../utils/format.js';
 import AlertsPanel from '../components/AlertsPanel.jsx';
+import SecurityRulesPanel from '../components/SecurityRulesPanel.jsx';
 
 const DENIED_EVENT_TYPES = ['ACCESS_DENIED', 'LOGIN_FAILED', 'STEP_UP_VERIFICATION'];
 
@@ -69,6 +70,7 @@ export default function Security() {
         </div>
       </div>
       <AlertsPanel isAdmin={isAdmin} />
+      <SecurityRulesPanel />
     </>
   );
   

@@ -48,9 +48,9 @@ test('invalid or missing userSensitivity is treated as 0, not an error', () => {
   assert.equal(nonInteger.breakdown.userSensitivityScore, 0);
 });
 
-test('userSensitivity above the max (3) is clamped, not allowed to inflate the score arbitrarily', () => {
+test('userSensitivity above the max (4) is clamped, not allowed to inflate the score arbitrarily', () => {
   const result = classifyFile({ originalName: 'notes.txt', mimeType: 'text/plain', userSensitivity: 999 });
-  assert.equal(result.breakdown.userSensitivityScore, 3);
+  assert.equal(result.breakdown.userSensitivityScore, 4);
 });
 
 test('classification is deterministic: identical input always gives identical output', () => {
@@ -68,6 +68,7 @@ test('every threshold boundary maps to the correct level', () => {
     return score;
   };
   assert.equal(classifyFile({ originalName: 'a.txt', mimeType: 'text/plain', userSensitivity: 0 }).riskLevel, 'LOW');   // 1+0+0=1
-  assert.equal(classifyFile({ originalName: 'a.txt', mimeType: 'text/plain', userSensitivity: 3 }).riskLevel, 'MEDIUM'); // 1+0+3=4
-  assert.equal(classifyFile({ originalName: 'a.pdf', mimeType: 'application/pdf', userSensitivity: 3 }).riskLevel, 'MEDIUM'); // 3+0+3=6... adjust below
+  assert.equal(classifyFile({ originalName: 'a.txt', mimeType: 'text/plain', userSensitivity: 3 }).riskLevel, 'HIGH'); // sensitivity floor
+  assert.equal(classifyFile({ originalName: 'a.pdf', mimeType: 'application/pdf', userSensitivity: 3 }).riskLevel, 'HIGH'); // sensitivity floor
+  assert.equal(classifyFile({ originalName: 'a.pdf', mimeType: 'application/pdf', userSensitivity: 4 }).riskLevel, 'CRITICAL');
 });

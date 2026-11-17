@@ -11,6 +11,7 @@ import { getPolicy } from '../config/securityPolicies.js'
 import * as permissionModel from '../models/permission.model.js'
 import * as userModel from '../models/user.model.js'
 import { permissionAtLeast } from '../config/permissions.js'
+import { parseContentEvidence } from '../services/contentEvidence.js'
 
 const GCM_TAG_BYTES = 16
 
@@ -23,7 +24,11 @@ export async function uploadFile (req, res) {
   const buffer = req.file.buffer // this is CIPHERTEXT: encryption already happened in the browser
   const iv = req.body.iv
   const keyMetadata = JSON.parse(req.body.keyMetadata)
-  const originalSize = req.body.originalSize
+  const originalSize = Number(req.body.originalSize)
+
+  if (!Number.isSafeInteger(originalSize) || originalSize < 0) {
+    throw new AppError('Invalid original file size', 400)
+  }
   const mimeType = req.body.mimeType
 
   // Sanity check: for AES-GCM, ciphertext length must be exactly
@@ -31,11 +36,18 @@ export async function uploadFile (req, res) {
   // mismatched metadata early, independent of the cryptographic check that
   // happens later when the browser actually decrypts the file.
   const expectedSize = originalSize + GCM_TAG_BYTES
+
   if (buffer.length !== expectedSize) {
     throw new AppError(
       'Ciphertext size is inconsistent with the declared plaintext size',
       400
     )
+  }
+
+  const parsedEvidence = parseContentEvidence(req.body.contentEvidence)
+
+  if (!parsedEvidence.ok) {
+    throw new AppError(parsedEvidence.reason, 400)
   }
 
   // A hash of what we actually stored, for detecting storage-level corruption.
@@ -51,7 +63,8 @@ export async function uploadFile (req, res) {
   const risk = classifyFile({
     originalName: req.file.originalname,
     mimeType,
-    userSensitivity: req.body.userSensitivity ?? 0
+    userSensitivity: req.body.userSensitivity ?? 0,
+    contentEvidence: parsedEvidence.evidence
   })
 
   const record = {
@@ -231,64 +244,108 @@ function toFileView (f) {
   }
 }
 
-export async function shareFile(req, res) {
-  const file = req.targetFile; // owner-only route (loadFileOwned)
-  const { email, permission, wrappedFek } = req.body;
-  const policy = getPolicy(file.riskLevel);
+export async function shareFile (req, res) {
+  const file = req.targetFile // owner-only route (loadFileOwned)
+  const { email, permission, wrappedFek } = req.body
+  const policy = getPolicy(file.riskLevel)
 
   // SECURITY: re-checked here regardless of what the UI allowed the owner to
   // select — the frontend cap is a convenience, this is the real gate.
   if (!permissionAtLeast(policy.maxSharePermission, permission)) {
-    throw new AppError(`Files classified ${file.riskLevel} cannot be shared above ${policy.maxSharePermission}`, 403);
+    throw new AppError(
+      `Files classified ${file.riskLevel} cannot be shared above ${policy.maxSharePermission}`,
+      403
+    )
   }
-  if (permission === 'OWNER') throw new AppError('Ownership cannot be transferred through sharing', 400);
+  if (permission === 'OWNER')
+    throw new AppError('Ownership cannot be transferred through sharing', 400)
 
-  const recipient = await userModel.findByEmail(email);
-  if (!recipient) throw new AppError('No registered user with that email', 404);
-  if (recipient.id === req.user.id) throw new AppError('You cannot share a file with yourself', 400);
+  const recipient = await userModel.findByEmail(email)
+  if (!recipient) throw new AppError('No registered user with that email', 404)
+  if (recipient.id === req.user.id)
+    throw new AppError('You cannot share a file with yourself', 400)
 
-  await withTransaction(async (conn) => {
-    await permissionModel.grant({ fileId: file.id, userId: recipient.id, permission, grantedBy: req.user.id }, conn);
+  await withTransaction(async conn => {
+    await permissionModel.grant(
+      {
+        fileId: file.id,
+        userId: recipient.id,
+        permission,
+        grantedBy: req.user.id
+      },
+      conn
+    )
     // wrapIv is null: this FEK copy is wrapped with RSA-OAEP under the
     // recipient's PUBLIC key (computed client-side — see ShareModal.jsx),
     // not with AES-GCM, so there is no IV. See the Phase 4 schema comment.
-    await fileKeyModel.createFileKey({ fileId: file.id, userId: recipient.id, wrappedFek, wrapIv: null, wrapType: 'PUBLIC_KEY' }, conn);
-  });
+    await fileKeyModel.createFileKey(
+      {
+        fileId: file.id,
+        userId: recipient.id,
+        wrappedFek,
+        wrapIv: null,
+        wrapType: 'PUBLIC_KEY'
+      },
+      conn
+    )
+  })
 
   await logEvent({
-    userId: req.user.id, eventType: 'SHARE', fileId: file.id, result: 'SUCCESS', ipAddress: req.ip,
-    details: { recipientId: recipient.id, permission, riskLevel: file.riskLevel },
-  });
+    userId: req.user.id,
+    eventType: 'SHARE',
+    fileId: file.id,
+    result: 'SUCCESS',
+    ipAddress: req.ip,
+    details: {
+      recipientId: recipient.id,
+      permission,
+      riskLevel: file.riskLevel
+    }
+  })
 
-  return sendSuccess(res, null, 'File shared', 201);
+  return sendSuccess(res, null, 'File shared', 201)
 }
 
-export async function revokeShare(req, res) {
-  const file = req.targetFile; // owner-only route
-  const targetUserId = req.params.userId;
+export async function revokeShare (req, res) {
+  const file = req.targetFile // owner-only route
+  const targetUserId = req.params.userId
 
-  if (targetUserId === file.ownerId) throw new AppError('Cannot revoke the owner\'s own access', 400);
+  if (targetUserId === file.ownerId)
+    throw new AppError("Cannot revoke the owner's own access", 400)
 
-  await withTransaction(async (conn) => {
-    await permissionModel.revoke(file.id, targetUserId, conn);
-    await fileKeyModel.deleteForUser(file.id, targetUserId, conn);
-  });
+  await withTransaction(async conn => {
+    await permissionModel.revoke(file.id, targetUserId, conn)
+    await fileKeyModel.deleteForUser(file.id, targetUserId, conn)
+  })
 
-  await logEvent({ userId: req.user.id, eventType: 'UNSHARE', fileId: file.id, result: 'SUCCESS', ipAddress: req.ip, details: { revokedUserId: targetUserId } });
-  return sendSuccess(res, null, 'Access revoked');
+  await logEvent({
+    userId: req.user.id,
+    eventType: 'UNSHARE',
+    fileId: file.id,
+    result: 'SUCCESS',
+    ipAddress: req.ip,
+    details: { revokedUserId: targetUserId }
+  })
+  return sendSuccess(res, null, 'Access revoked')
 }
 
-export async function listPermissionsForFile(req, res) {
-  const rows = await permissionModel.listForFileWithUserInfo(req.targetFile.id);
+export async function listPermissionsForFile (req, res) {
+  const rows = await permissionModel.listForFileWithUserInfo(req.targetFile.id)
   return sendSuccess(res, {
-    permissions: rows.map((r) => ({ userId: r.user_id, name: r.name, email: r.email, permission: r.permission, grantedAt: r.created_at })),
-  });
+    permissions: rows.map(r => ({
+      userId: r.user_id,
+      name: r.name,
+      email: r.email,
+      permission: r.permission,
+      grantedAt: r.created_at
+    }))
+  })
 }
 
-export async function listSharedWithMe(req, res) {
-  const rows = await permissionModel.listSharedWithUser(req.user.id);
+export async function listSharedWithMe (req, res) {
+  const rows = await permissionModel.listSharedWithUser(req.user.id)
   return sendSuccess(res, {
-    files: rows.map((r) => ({
+    files: rows.map(r => ({
       id: r.id,
       originalName: r.original_name,
       mimeType: r.mime_type,
@@ -300,7 +357,7 @@ export async function listSharedWithMe(req, res) {
       permission: r.permission,
       sharedAt: r.shared_at,
       ownerName: r.owner_name,
-      ownerEmail: r.owner_email,
-    })),
-  });
+      ownerEmail: r.owner_email
+    }))
+  })
 }
